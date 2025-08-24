@@ -1,0 +1,97 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <title>Image Crop & Transparent Background</title>
+  <link href="https://cdnjs.cloudflare.com/ajax/libs/cropperjs/1.5.13/cropper.min.css" rel="stylesheet"/>
+  <style>
+    body { font-family: sans-serif; margin: 20px; }
+    #preview { margin-top: 20px; }
+    img { max-width: 100%; }
+    button { margin-top: 10px; }
+  </style>
+</head>
+<body>
+  <h2>Step 1–3: Upload → Crop → Transparent Background</h2>
+
+  <!-- Step 1: Upload -->
+  <input type="file" id="upload" accept="image/*"><br><br>
+  <div>
+    <img id="image" style="max-width:500px; display:none;">
+  </div>
+  <button id="cropBtn" style="display:none;">Crop & Make Transparent</button>
+  <button id="downloadBtn" style="display:none;">Download PNG</button>
+
+  <!-- Step 3: Result -->
+  <div id="preview">
+    <h3>Transparent Result:</h3>
+    <canvas id="canvas"></canvas>
+  </div>
+
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/cropperjs/1.5.13/cropper.min.js"></script>
+  <script>
+    let cropper;
+
+    // Step 1: Upload
+    document.getElementById("upload").addEventListener("change", function (e) {
+      const file = e.target.files[0];
+      if (!file) return;
+
+      const reader = new FileReader();
+      reader.onload = function (event) {
+        const img = document.getElementById("image");
+        img.src = event.target.result;
+        img.style.display = "block";
+
+        if (cropper) cropper.destroy(); // reset old cropper
+        cropper = new Cropper(img, { aspectRatio: NaN }); // free crop
+        document.getElementById("cropBtn").style.display = "inline-block";
+      };
+      reader.readAsDataURL(file);
+    });
+
+    // Step 2 & 3: Crop and make transparent
+    document.getElementById("cropBtn").addEventListener("click", function () {
+      if (!cropper) return;
+
+      // Get cropped image as canvas
+      const croppedCanvas = cropper.getCroppedCanvas();
+
+      // Convert white pixels to transparent
+      const ctx = croppedCanvas.getContext("2d");
+      const imgData = ctx.getImageData(0, 0, croppedCanvas.width, croppedCanvas.height);
+
+      for (let i = 0; i < imgData.data.length; i += 4) {
+        const r = imgData.data[i];
+        const g = imgData.data[i + 1];
+        const b = imgData.data[i + 2];
+
+        // If pixel is "near white" → make transparent
+        if (r > 240 && g > 240 && b > 240) {
+          imgData.data[i + 3] = 0;
+        }
+      }
+
+      ctx.putImageData(imgData, 0, 0);
+
+      // Show result in preview canvas
+      const resultCanvas = document.getElementById("canvas");
+      resultCanvas.width = croppedCanvas.width;
+      resultCanvas.height = croppedCanvas.height;
+      resultCanvas.getContext("2d").drawImage(croppedCanvas, 0, 0);
+
+      // Show download button
+      document.getElementById("downloadBtn").style.display = "inline-block";
+    });
+
+    // Step 4: Download PNG
+    document.getElementById("downloadBtn").addEventListener("click", function () {
+      const resultCanvas = document.getElementById("canvas");
+      const link = document.createElement("a");
+      link.download = "transparent-image.png";
+      link.href = resultCanvas.toDataURL("image/png");
+      link.click();
+    });
+  </script>
+</body>
+</html>
