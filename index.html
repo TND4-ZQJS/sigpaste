@@ -1,95 +1,108 @@
 <!doctype html>
 <html lang="en">
 <head>
-  <meta charset="UTF-8">
-  <title>Image Crop & Transparent Background</title>
-  <link href="https://cdnjs.cloudflare.com/ajax/libs/cropperjs/1.5.13/cropper.min.css" rel="stylesheet"/>
+  <meta charset="utf-8" />
+  <title>Signature Extraction Tool</title>
+  <meta name="viewport" content="width=device-width,initial-scale=1" />
   <style>
-    body { font-family: sans-serif; margin: 20px; }
-    #preview { margin-top: 20px; }
-    img { max-width: 100%; }
-    button { margin-top: 10px; }
+    :root{
+      --bg:#f6f7f9; --card:#fff; --accent:#007aff; --muted:#666; --line:#e9e9ee;
+    }
+    *{box-sizing:border-box}
+    body{font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,Arial;margin:18px;background:var(--bg);color:#111}
+    main{max-width:980px;margin:0 auto;background:var(--card);padding:18px;border-radius:12px;box-shadow:0 8px 28px rgba(0,0,0,0.06)}
+    h1{margin:15px 0 25px 0;font-size:1.50rem}
+    .section{background:#fbfbfd;border:1px solid #eee;padding:14px;border-radius:10px;margin:12px 0}
+    .section h2{margin:0 0 10px 0;font-size:1.05rem}
+    label{display:block;margin:8px 0;font-size:0.95rem}
+    input[type=file]{margin-top:8px}
+    .row{display:flex;gap:12px;align-items:center;flex-wrap:wrap;margin:8px 0}
+    .muted{color:var(--muted);font-size:0.85rem}
+    button{background:var(--accent);color:#fff;border:0;padding:10px 14px;border-radius:10px;cursor:pointer}
+    button.secondary{background:#999}
+    .preview{margin-top:12px;text-align:center}
+    canvas{max-width:100%;border:1px solid var(--line);border-radius:8px}
   </style>
 </head>
 <body>
-  <h2>Step 1–3: Upload → Crop → Transparent Background</h2>
+  <main>
+    <h1>Signature Extraction Tool</h1>
 
-  <!-- Step 1: Upload -->
-  <input type="file" id="upload" accept="image/*"><br><br>
-  <div>
-    <img id="image" style="max-width:500px; display:none;">
-  </div>
-  <button id="cropBtn" style="display:none;">Crop & Make Transparent</button>
-  <button id="downloadBtn" style="display:none;">Download PNG</button>
+    <div class="section">
+      <h2>1. Upload Cropped Image</h2>
+      <input type="file" id="upload" accept="image/*">
+      <p class="muted">Upload a cropped photo of your signature (JPG/PNG with white background).</p>
+    </div>
 
-  <!-- Step 3: Result -->
-  <div id="preview">
-    <h3>Transparent Result:</h3>
-    <canvas id="canvas"></canvas>
-  </div>
+    <div class="section">
+      <h2>2. Adjust Extraction Threshold</h2>
+      <input type="range" id="threshold" min="0" max="255" value="200">
+      <p class="muted">Move the slider until the signature looks clean (default 200).</p>
+    </div>
 
-  <script src="https://cdnjs.cloudflare.com/ajax/libs/cropperjs/1.5.13/cropper.min.js"></script>
+    <div class="section">
+      <h2>3. Preview</h2>
+      <div class="preview">
+        <canvas id="canvas"></canvas>
+      </div>
+      <div class="actions" style="margin-top:12px">
+        <button id="download">Download Transparent PNG</button>
+      </div>
+    </div>
+  </main>
+
   <script>
-    let cropper;
+    const upload = document.getElementById("upload");
+    const thresholdSlider = document.getElementById("threshold");
+    const canvas = document.getElementById("canvas");
+    const ctx = canvas.getContext("2d");
+    let image = null;
 
-    // Step 1: Upload
-    document.getElementById("upload").addEventListener("change", function (e) {
+    // Load image when uploaded
+    upload.addEventListener("change", e => {
       const file = e.target.files[0];
       if (!file) return;
-
       const reader = new FileReader();
-      reader.onload = function (event) {
-        const img = document.getElementById("image");
-        img.src = event.target.result;
-        img.style.display = "block";
-
-        if (cropper) cropper.destroy(); // reset old cropper
-        cropper = new Cropper(img, { aspectRatio: NaN }); // free crop
-        document.getElementById("cropBtn").style.display = "inline-block";
+      reader.onload = function(ev) {
+        image = new Image();
+        image.onload = () => {
+          canvas.width = image.width;
+          canvas.height = image.height;
+          processImage();
+        };
+        image.src = ev.target.result;
       };
       reader.readAsDataURL(file);
     });
 
-    // Step 2 & 3: Crop and make transparent
-    document.getElementById("cropBtn").addEventListener("click", function () {
-      if (!cropper) return;
+    // Process extraction
+    function processImage() {
+      if (!image) return;
+      ctx.drawImage(image, 0, 0, canvas.width, canvas.height);
+      let imgData = ctx.getImageData(0, 0, canvas.width, canvas.height);
+      let data = imgData.data;
+      let threshold = parseInt(thresholdSlider.value);
 
-      // Get cropped image as canvas
-      const croppedCanvas = cropper.getCroppedCanvas();
+      for (let i = 0; i < data.length; i += 4) {
+        let r = data[i], g = data[i+1], b = data[i+2];
+        let brightness = 0.299*r + 0.587*g + 0.114*b;
 
-      // Convert white pixels to transparent
-      const ctx = croppedCanvas.getContext("2d");
-      const imgData = ctx.getImageData(0, 0, croppedCanvas.width, croppedCanvas.height);
-
-      for (let i = 0; i < imgData.data.length; i += 4) {
-        const r = imgData.data[i];
-        const g = imgData.data[i + 1];
-        const b = imgData.data[i + 2];
-
-        // If pixel is "near white" → make transparent
-        if (r > 240 && g > 240 && b > 240) {
-          imgData.data[i + 3] = 0;
+        if (brightness > threshold) {
+          data[i+3] = 0; // transparent
+        } else {
+          data[i] = 0; data[i+1] = 0; data[i+2] = 0; data[i+3] = 255; // solid black
         }
       }
-
       ctx.putImageData(imgData, 0, 0);
+    }
 
-      // Show result in preview canvas
-      const resultCanvas = document.getElementById("canvas");
-      resultCanvas.width = croppedCanvas.width;
-      resultCanvas.height = croppedCanvas.height;
-      resultCanvas.getContext("2d").drawImage(croppedCanvas, 0, 0);
+    thresholdSlider.addEventListener("input", processImage);
 
-      // Show download button
-      document.getElementById("downloadBtn").style.display = "inline-block";
-    });
-
-    // Step 4: Download PNG
-    document.getElementById("downloadBtn").addEventListener("click", function () {
-      const resultCanvas = document.getElementById("canvas");
+    // Download button
+    document.getElementById("download").addEventListener("click", () => {
       const link = document.createElement("a");
-      link.download = "transparent-image.png";
-      link.href = resultCanvas.toDataURL("image/png");
+      link.download = "signature.png";
+      link.href = canvas.toDataURL("image/png");
       link.click();
     });
   </script>
