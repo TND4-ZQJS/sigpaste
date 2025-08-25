@@ -9,6 +9,7 @@
     #preview { margin-top: 20px; }
     img { max-width: 100%; }
     button { margin-top: 10px; }
+    .slider { width: 200px; }
   </style>
 </head>
 <body>
@@ -19,7 +20,16 @@
   <div>
     <img id="image" style="max-width:500px; display:none;">
   </div>
-  <button id="cropBtn" style="display:none;">Crop & Make Transparent</button>
+  
+  <!-- Tolerance slider -->
+  <label>
+    Background removal tolerance:
+    <input type="range" id="tolerance" min="0" max="150" value="40" class="slider">
+    <span id="toleranceValue">40</span>
+  </label>
+  <br>
+
+  <button id="cropBtn" style="display:none;">Crop</button>
   <button id="downloadBtn" style="display:none;">Download PNG</button>
 
   <!-- Step 3: Result -->
@@ -31,6 +41,15 @@
   <script src="https://cdnjs.cloudflare.com/ajax/libs/cropperjs/1.5.13/cropper.min.js"></script>
   <script>
     let cropper;
+    let croppedCanvas;
+
+    // Update tolerance label
+    const toleranceInput = document.getElementById("tolerance");
+    const toleranceValue = document.getElementById("toleranceValue");
+    toleranceInput.addEventListener("input", () => {
+      toleranceValue.textContent = toleranceInput.value;
+      if (croppedCanvas) applyTransparency(); // live update
+    });
 
     // Step 1: Upload
     document.getElementById("upload").addEventListener("change", function (e) {
@@ -50,14 +69,19 @@
       reader.readAsDataURL(file);
     });
 
-    // Step 2 & 3: Crop and make transparent
+    // Step 2: Crop (keeps original cropped canvas)
     document.getElementById("cropBtn").addEventListener("click", function () {
       if (!cropper) return;
+      croppedCanvas = cropper.getCroppedCanvas();
+      applyTransparency();
+      document.getElementById("downloadBtn").style.display = "inline-block";
+    });
 
-      // Get cropped image as canvas
-      const croppedCanvas = cropper.getCroppedCanvas();
+    // Apply transparency with tolerance
+    function applyTransparency() {
+      if (!croppedCanvas) return;
+      const tolerance = parseInt(toleranceInput.value, 10);
 
-      // Convert white pixels to transparent
       const ctx = croppedCanvas.getContext("2d");
       const imgData = ctx.getImageData(0, 0, croppedCanvas.width, croppedCanvas.height);
 
@@ -66,8 +90,8 @@
         const g = imgData.data[i + 1];
         const b = imgData.data[i + 2];
 
-        // If pixel is "near white" → make transparent
-        if (r > 240 && g > 240 && b > 240) {
+        const diff = Math.abs(r - 255) + Math.abs(g - 255) + Math.abs(b - 255);
+        if (diff < tolerance) {
           imgData.data[i + 3] = 0;
         }
       }
@@ -79,10 +103,7 @@
       resultCanvas.width = croppedCanvas.width;
       resultCanvas.height = croppedCanvas.height;
       resultCanvas.getContext("2d").drawImage(croppedCanvas, 0, 0);
-
-      // Show download button
-      document.getElementById("downloadBtn").style.display = "inline-block";
-    });
+    }
 
     // Step 4: Download PNG
     document.getElementById("downloadBtn").addEventListener("click", function () {
