@@ -2,7 +2,7 @@
 <html lang="en">
 <head>
   <meta charset="UTF-8">
-  <title>Image Crop & Transparent Background</title>
+  <title>Signature Extraction Tool</title>
   <link href="https://cdnjs.cloudflare.com/ajax/libs/cropperjs/1.5.13/cropper.min.css" rel="stylesheet"/>
   <style>
     body { font-family: sans-serif; margin: 20px; }
@@ -13,7 +13,7 @@
   </style>
 </head>
 <body>
-  <h2>Step 1–3: Upload → Crop → Transparent Background</h2>
+  <h2>Signature Extraction (Dark strokes only)</h2>
 
   <!-- Step 1: Upload -->
   <input type="file" id="upload" accept="image/*"><br><br>
@@ -21,20 +21,20 @@
     <img id="image" style="max-width:500px; display:none;">
   </div>
   
-  <!-- Tolerance slider -->
+  <!-- Threshold slider -->
   <label>
-    Background removal tolerance:
-    <input type="range" id="tolerance" min="0" max="150" value="40" class="slider">
-    <span id="toleranceValue">40</span>
+    Signature threshold:
+    <input type="range" id="threshold" min="0" max="255" value="200" class="slider">
+    <span id="thresholdValue">200</span>
   </label>
   <br>
 
-  <button id="cropBtn" style="display:none;">Crop</button>
+  <button id="cropBtn" style="display:none;">Extract Signature</button>
   <button id="downloadBtn" style="display:none;">Download PNG</button>
 
   <!-- Step 3: Result -->
   <div id="preview">
-    <h3>Transparent Result:</h3>
+    <h3>Extracted Signature:</h3>
     <canvas id="canvas"></canvas>
   </div>
 
@@ -43,12 +43,11 @@
     let cropper;
     let croppedCanvas;
 
-    // Update tolerance label
-    const toleranceInput = document.getElementById("tolerance");
-    const toleranceValue = document.getElementById("toleranceValue");
-    toleranceInput.addEventListener("input", () => {
-      toleranceValue.textContent = toleranceInput.value;
-      if (croppedCanvas) applyTransparency(); // live update
+    const thresholdInput = document.getElementById("threshold");
+    const thresholdValue = document.getElementById("thresholdValue");
+    thresholdInput.addEventListener("input", () => {
+      thresholdValue.textContent = thresholdInput.value;
+      if (croppedCanvas) applySignatureExtraction();
     });
 
     // Step 1: Upload
@@ -62,25 +61,25 @@
         img.src = event.target.result;
         img.style.display = "block";
 
-        if (cropper) cropper.destroy(); // reset old cropper
-        cropper = new Cropper(img, { aspectRatio: NaN }); // free crop
+        if (cropper) cropper.destroy(); 
+        cropper = new Cropper(img, { aspectRatio: NaN });
         document.getElementById("cropBtn").style.display = "inline-block";
       };
       reader.readAsDataURL(file);
     });
 
-    // Step 2: Crop (keeps original cropped canvas)
+    // Step 2: Crop
     document.getElementById("cropBtn").addEventListener("click", function () {
       if (!cropper) return;
       croppedCanvas = cropper.getCroppedCanvas();
-      applyTransparency();
+      applySignatureExtraction();
       document.getElementById("downloadBtn").style.display = "inline-block";
     });
 
-    // Apply transparency with tolerance
-    function applyTransparency() {
+    // Signature extraction (dark strokes only)
+    function applySignatureExtraction() {
       if (!croppedCanvas) return;
-      const tolerance = parseInt(toleranceInput.value, 10);
+      const threshold = parseInt(thresholdInput.value, 10);
 
       const ctx = croppedCanvas.getContext("2d");
       const imgData = ctx.getImageData(0, 0, croppedCanvas.width, croppedCanvas.height);
@@ -90,9 +89,16 @@
         const g = imgData.data[i + 1];
         const b = imgData.data[i + 2];
 
-        const diff = Math.abs(r - 255) + Math.abs(g - 255) + Math.abs(b - 255);
-        if (diff < tolerance) {
-          imgData.data[i + 3] = 0;
+        // brightness (0=black, 255=white)
+        const brightness = 0.299 * r + 0.587 * g + 0.114 * b;
+
+        if (brightness > threshold) {
+          imgData.data[i + 3] = 0; // transparent background
+        } else {
+          // keep strokes, force them to dark color
+          imgData.data[i] = 0;
+          imgData.data[i+1] = 0;
+          imgData.data[i+2] = 0;
         }
       }
 
@@ -105,11 +111,11 @@
       resultCanvas.getContext("2d").drawImage(croppedCanvas, 0, 0);
     }
 
-    // Step 4: Download PNG
+    // Step 3: Download PNG
     document.getElementById("downloadBtn").addEventListener("click", function () {
       const resultCanvas = document.getElementById("canvas");
       const link = document.createElement("a");
-      link.download = "transparent-image.png";
+      link.download = "signature.png";
       link.href = resultCanvas.toDataURL("image/png");
       link.click();
     });
