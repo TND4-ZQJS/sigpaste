@@ -2,8 +2,9 @@
 <html lang="en">
 <head>
   <meta charset="utf-8" />
-  <title>Signature Extraction Tool</title>
+  <title>Signature Extraction Wizard</title>
   <meta name="viewport" content="width=device-width,initial-scale=1" />
+  <!-- Your style system -->
   <style>
     :root{
       --bg:#f6f7f9; --card:#fff; --accent:#007aff; --muted:#666; --line:#e9e9ee;
@@ -11,100 +12,229 @@
     *{box-sizing:border-box}
     body{font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,Arial;margin:18px;background:var(--bg);color:#111}
     main{max-width:980px;margin:0 auto;background:var(--card);padding:18px;border-radius:12px;box-shadow:0 8px 28px rgba(0,0,0,0.06)}
-    h1{margin:15px 0 25px 0;font-size:1.50rem}
+    h1{margin:15px 0 35px 0;font-size:1.50rem}
     .section{background:#fbfbfd;border:1px solid #eee;padding:14px;border-radius:10px;margin:12px 0}
     .section h2{margin:0 0 10px 0;font-size:1.05rem}
     label{display:block;margin:8px 0;font-size:0.95rem}
-    input[type=file]{margin-top:8px}
+    input[type=file]{margin-top:6px}
     .row{display:flex;gap:12px;align-items:center;flex-wrap:wrap;margin:8px 0}
     .muted{color:var(--muted);font-size:0.85rem}
     button{background:var(--accent);color:#fff;border:0;padding:10px 14px;border-radius:10px;cursor:pointer}
     button.secondary{background:#999}
-    .preview{margin-top:12px;text-align:center}
-    canvas{max-width:100%;border:1px solid var(--line);border-radius:8px}
+    button.ghost{background:transparent;border:1px solid var(--line);color:#333}
+    .actions{display:flex;gap:12px;align-items:center}
+    /* Minimal extras */
+    .hidden{display:none}
+    .preview{margin-top:10px;text-align:center}
+    img, canvas{max-width:100%;border:1px solid var(--line);border-radius:8px}
+    .step-indicator{display:flex;gap:8px;flex-wrap:wrap;margin:0 0 8px 0}
+    .pill{padding:6px 10px;border:1px solid var(--line);border-radius:999px;font-size:0.85rem}
+    .pill.active{border-color:var(--accent);color:#fff;background:var(--accent)}
   </style>
+
+  <!-- Cropper.js -->
+  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/cropperjs/1.5.13/cropper.min.css"/>
 </head>
 <body>
-  <main>
-    <h1>Signature Extraction Tool</h1>
+<main>
+  <h1>Signature Extraction (Wizard)</h1>
 
-    <div class="section">
-      <h2>1. Upload Cropped Image</h2>
-      <input type="file" id="upload" accept="image/*">
-      <p class="muted">Upload a cropped photo of your signature (JPG/PNG with white background).</p>
+  <!-- Step indicator -->
+  <div class="step-indicator">
+    <span class="pill" id="pi1">1. Upload</span>
+    <span class="pill" id="pi2">2. Crop</span>
+    <span class="pill" id="pi3">3. Extract & Download</span>
+  </div>
+
+  <!-- Step 1 -->
+  <div class="section" id="step1">
+    <h2>1. Upload Image</h2>
+    <label>
+      Choose a photo/scan of your signature
+      <input type="file" id="fileInput" accept="image/*">
+    </label>
+    <p class="muted">Tip: A photo on white paper works best. You can rotate/zoom during cropping.</p>
+    <div class="actions">
+      <button class="ghost" id="s1Next" disabled>Next: Crop</button>
     </div>
+  </div>
 
-    <div class="section">
-      <h2>2. Adjust Extraction Threshold</h2>
-      <input type="range" id="threshold" min="0" max="255" value="200">
-      <p class="muted">Move the slider until the signature looks clean (default 200).</p>
+  <!-- Step 2 -->
+  <div class="section hidden" id="step2">
+    <h2>2. Crop to Signature Area</h2>
+    <div class="preview">
+      <img id="cropImage" alt="Crop source" class="hidden">
     </div>
-
-    <div class="section">
-      <h2>3. Preview</h2>
-      <div class="preview">
-        <canvas id="canvas"></canvas>
-      </div>
-      <div class="actions" style="margin-top:12px">
-        <button id="download">Download Transparent PNG</button>
-      </div>
+    <div class="actions">
+      <button class="ghost" id="s2Back">Back</button>
+      <button class="secondary" id="s2Reset">Reset Crop</button>
+      <button id="s2Next" disabled>Next: Extract</button>
     </div>
-  </main>
+    <p class="muted">Pinch to zoom, drag to position. When ready, tap “Next: Extract”.</p>
+  </div>
 
-  <script>
-    const upload = document.getElementById("upload");
-    const thresholdSlider = document.getElementById("threshold");
-    const canvas = document.getElementById("canvas");
-    const ctx = canvas.getContext("2d");
-    let image = null;
+  <!-- Step 3 -->
+  <div class="section hidden" id="step3">
+    <h2>3. Extract Signature (Dark Strokes Only)</h2>
+    <div class="row">
+      <label style="flex:1">
+        Threshold
+        <input type="range" id="threshold" min="0" max="255" value="200">
+      </label>
+      <div class="muted">Higher = keep only darker strokes</div>
+    </div>
+    <div class="preview">
+      <canvas id="resultCanvas"></canvas>
+    </div>
+    <div class="actions" style="margin-top:12px">
+      <button class="ghost" id="s3Back">Back</button>
+      <button id="downloadBtn" disabled>Download Transparent PNG</button>
+    </div>
+    <p class="muted">The white/grey background is removed. Only the signature stays on transparency.</p>
+  </div>
+</main>
 
-    // Load image when uploaded
-    upload.addEventListener("change", e => {
-      const file = e.target.files[0];
-      if (!file) return;
-      const reader = new FileReader();
-      reader.onload = function(ev) {
-        image = new Image();
-        image.onload = () => {
-          canvas.width = image.width;
-          canvas.height = image.height;
-          processImage();
-        };
-        image.src = ev.target.result;
+<script src="https://cdnjs.cloudflare.com/ajax/libs/cropperjs/1.5.13/cropper.min.js"></script>
+<script>
+  // Elements
+  const step1 = document.getElementById('step1');
+  const step2 = document.getElementById('step2');
+  const step3 = document.getElementById('step3');
+  const pills = [document.getElementById('pi1'), document.getElementById('pi2'), document.getElementById('pi3')];
+
+  const fileInput = document.getElementById('fileInput');
+  const s1Next = document.getElementById('s1Next');
+
+  const cropImage = document.getElementById('cropImage');
+  const s2Back = document.getElementById('s2Back');
+  const s2Reset = document.getElementById('s2Reset');
+  const s2Next = document.getElementById('s2Next');
+
+  const threshold = document.getElementById('threshold');
+  const resultCanvas = document.getElementById('resultCanvas');
+  const downloadBtn = document.getElementById('downloadBtn');
+  const rctx = resultCanvas.getContext('2d');
+
+  // State
+  let cropper = null;
+  let sourceImg = null;
+  let croppedCanvas = null;
+  let uploadedName = 'signature';
+
+  // Wizard nav
+  function go(step) {
+    [step1, step2, step3].forEach((el, i) => {
+      el.classList.toggle('hidden', i !== (step-1));
+      pills[i].classList.toggle('active', i === (step-1));
+    });
+  }
+
+  // Step 1: upload
+  fileInput.addEventListener('change', (e) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    uploadedName = (file.name || 'signature').replace(/\.[^.]+$/,'') || 'signature';
+
+    const reader = new FileReader();
+    reader.onload = ev => {
+      sourceImg = new Image();
+      sourceImg.onload = () => {
+        // Prepare crop image element
+        cropImage.src = sourceImg.src = ev.target.result;
+        cropImage.classList.remove('hidden');
+        s1Next.disabled = false;
       };
-      reader.readAsDataURL(file);
+      sourceImg.src = ev.target.result;
+    };
+    reader.readAsDataURL(file);
+  });
+
+  s1Next.addEventListener('click', () => {
+    go(2);
+    // Init cropper
+    if (cropper) cropper.destroy();
+    cropper = new Cropper(cropImage, {
+      viewMode: 1,
+      dragMode: 'move',
+      autoCrop: true,
+      background: false,
+      movable: true,
+      zoomable: true,
+      scalable: false,
+      responsive: true,
+      minContainerWidth: 300,
+      minContainerHeight: 200,
+      ready() { s2Next.disabled = false; }
     });
+  });
 
-    // Process extraction
-    function processImage() {
-      if (!image) return;
-      ctx.drawImage(image, 0, 0, canvas.width, canvas.height);
-      let imgData = ctx.getImageData(0, 0, canvas.width, canvas.height);
-      let data = imgData.data;
-      let threshold = parseInt(thresholdSlider.value);
+  // Step 2 controls
+  s2Back.addEventListener('click', () => {
+    if (cropper) { cropper.destroy(); cropper = null; }
+    s2Next.disabled = true;
+    go(1);
+  });
 
-      for (let i = 0; i < data.length; i += 4) {
-        let r = data[i], g = data[i+1], b = data[i+2];
-        let brightness = 0.299*r + 0.587*g + 0.114*b;
+  s2Reset.addEventListener('click', () => {
+    if (cropper) cropper.reset();
+  });
 
-        if (brightness > threshold) {
-          data[i+3] = 0; // transparent
-        } else {
-          data[i] = 0; data[i+1] = 0; data[i+2] = 0; data[i+3] = 255; // solid black
-        }
+  s2Next.addEventListener('click', () => {
+    if (!cropper) return;
+    // Get cropped area as canvas (fill white to ensure consistent input for extraction)
+    croppedCanvas = cropper.getCroppedCanvas({ fillColor: '#ffffff' });
+    go(3);
+    renderExtraction(); // initial render
+    downloadBtn.disabled = false;
+  });
+
+  // Step 3: extraction
+  threshold.addEventListener('input', renderExtraction);
+
+  function renderExtraction() {
+    if (!croppedCanvas) return;
+    // Draw cropped onto result, then process pixels
+    resultCanvas.width = croppedCanvas.width;
+    resultCanvas.height = croppedCanvas.height;
+
+    // Draw the cropped image snapshot
+    rctx.drawImage(croppedCanvas, 0, 0);
+
+    const imgData = rctx.getImageData(0, 0, resultCanvas.width, resultCanvas.height);
+    const data = imgData.data;
+    const th = parseInt(threshold.value, 10);
+
+    for (let i = 0; i < data.length; i += 4) {
+      const r = data[i], g = data[i+1], b = data[i+2];
+      // Luma (perceived brightness): 0=black, 255=white
+      const brightness = 0.299*r + 0.587*g + 0.114*b;
+
+      if (brightness > th) {
+        // background → transparent
+        data[i+3] = 0;
+      } else {
+        // keep stroke, enforce solid black for clarity
+        data[i] = 0; data[i+1] = 0; data[i+2] = 0; data[i+3] = 255;
       }
-      ctx.putImageData(imgData, 0, 0);
     }
+    rctx.putImageData(imgData, 0, 0);
+  }
 
-    thresholdSlider.addEventListener("input", processImage);
+  // Step 3 nav
+  document.getElementById('s3Back').addEventListener('click', () => {
+    go(2);
+  });
 
-    // Download button
-    document.getElementById("download").addEventListener("click", () => {
-      const link = document.createElement("a");
-      link.download = "signature.png";
-      link.href = canvas.toDataURL("image/png");
-      link.click();
-    });
-  </script>
+  // Download
+  downloadBtn.addEventListener('click', () => {
+    const a = document.createElement('a');
+    a.download = `${uploadedName}-signature.png`;
+    a.href = resultCanvas.toDataURL('image/png');
+    a.click();
+  });
+
+  // Init
+  go(1);
+</script>
 </body>
 </html>
