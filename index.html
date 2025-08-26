@@ -1,316 +1,183 @@
 <!doctype html>
 <html lang="en">
 <head>
-  <meta charset="utf-8" />
-  <title>Signature Extraction Wizard</title>
-  <meta name="viewport" content="width=device-width,initial-scale=1" />
-  <!-- Your style system -->
-  <style>
-    :root{
-      --bg:#f6f7f9; --card:#fff; --accent:#007aff; --muted:#666; --line:#e9e9ee;
-    }
-    *{box-sizing:border-box}
-    body{font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,Arial;margin:18px;background:var(--bg);color:#111}
-    main{max-width:980px;margin:0 auto;background:var(--card);padding:18px;border-radius:12px;box-shadow:0 8px 28px rgba(0,0,0,0.06)}
-    h1{margin:15px 0 35px 0;font-size:1.50rem}
-    .section{background:#fbfbfd;border:1px solid #eee;padding:14px;border-radius:10px;margin:12px 0}
-    .section h2{margin:0 0 10px 0;font-size:1.05rem}
-    label{display:block;margin:8px 0;font-size:0.95rem}
-    input[type=file]{margin-top:6px}
-    .row{display:flex;gap:12px;align-items:center;flex-wrap:wrap;margin:8px 0}
-    .muted{color:var(--muted);font-size:0.85rem}
-    button{background:var(--accent);color:#fff;border:0;padding:10px 14px;border-radius:10px;cursor:pointer}
-    button.secondary{background:#999}
-    button.ghost{background:transparent;border:1px solid var(--line);color:#333}
-    .actions{display:flex;gap:12px;align-items:center}
-    /* Minimal extras */
-    .hidden{display:none}
-    .preview{margin-top:10px;text-align:center}
-    img, canvas{max-width:100%;border:1px solid var(--line);border-radius:8px}
-    .step-indicator{display:flex;gap:8px;flex-wrap:wrap;margin:0 0 8px 0}
-    .pill{padding:6px 10px;border:1px solid var(--line);border-radius:999px;font-size:0.85rem}
-    .pill.active{border-color:var(--accent);color:#fff;background:var(--accent)}
+<meta charset="utf-8" />
+<title>Signature Extraction Tool</title>
+<meta name="viewport" content="width=device-width,initial-scale=1" />
+<style>
+  :root{
+    --bg:#f6f7f9; --card:#fff; --accent:#007aff;
+    --muted:#666; --line:#e9e9ee;
+  }
+  *{box-sizing:border-box}
+  body{font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,Arial;
+       margin:18px;background:var(--bg);color:#111}
+  main{max-width:980px;margin:0 auto;background:var(--card);padding:18px;
+       border-radius:12px;box-shadow:0 8px 28px rgba(0,0,0,0.06)}
+  h1{margin:15px 0 25px 0;font-size:1.5rem}
+  .section{background:#fbfbfd;border:1px solid #eee;padding:14px;
+           border-radius:10px;margin:12px 0}
+  .section h2{margin:0 0 10px 0;font-size:1.05rem}
+  input[type=file]{margin:10px 0}
+  canvas{max-width:100%;border:1px solid #ccc;border-radius:6px}
+  .actions{margin-top:12px;display:flex;gap:10px}
+  button{background:var(--accent);color:#fff;border:0;padding:10px 14px;
+         border-radius:10px;cursor:pointer}
+  button.secondary{background:#999}
+  .step-indicator{display:flex;gap:8px;margin-bottom:18px;flex-wrap:wrap}
+  .pill{padding:6px 12px;border-radius:20px;background:#eee;font-size:0.9rem;cursor:pointer}
+  .pill.active{background:var(--accent);color:#fff}
+  .hidden{display:none}
 
-    #pdfContainer { position: relative; display: inline-block; }
-    #pdfCanvas { border: 1px solid #ccc; display:block; margin-bottom:12px; }
-    #sigBox {position: absolute; 
-             top: 50px; left: 50px;
-             width: 150px; height: 60px;
-             border: 2px dashed #007aff;
-             background: rgba(0,122,255,0.1);
-             cursor: move;
-             resize: both;
-             overflow: auto;
-      }
-  
-  </style>
-
-  <!-- Cropper.js -->
-  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/cropperjs/1.5.13/cropper.min.css"/>
+  /* Step 4 draggable signature box */
+  #sigBox {
+    position:absolute;
+    top:30px; left:30px;
+    border:2px dashed #007aff;
+    padding:6px 10px;
+    border-radius:6px;
+    background:rgba(255,255,255,0.7);
+    cursor:move;
+    user-select:none;
+  }
+</style>
 </head>
 <body>
 <main>
-  <h1>Signature Extraction (Wizard)</h1>
+  <h1>Signature Extraction Tool</h1>
 
-  <!-- Step indicator -->
+  <!-- Step pills -->
   <div class="step-indicator">
     <span class="pill" id="pi1">1. Upload</span>
     <span class="pill" id="pi2">2. Crop</span>
-    <span class="pill" id="pi3">3. Extract & Download</span>
+    <span class="pill" id="pi3">3. Extract</span>
+    <span class="pill" id="pi4">4. Place in PDF</span>
   </div>
 
   <!-- Step 1 -->
   <div class="section" id="step1">
-    <h2>1. Upload Image</h2>
-    <label>
-      Choose a photo/scan of your signature
-      <input type="file" id="fileInput" accept="image/*">
-    </label>
-    <p class="muted">Tip: A photo on white paper works best. You can rotate/zoom during cropping.</p>
+    <h2>Step 1 — Upload Image</h2>
+    <input type="file" id="fileInput" accept="image/*">
     <div class="actions">
-      <button class="ghost" id="s1Next" disabled>Next: Crop</button>
+      <button id="s1Next" disabled>Next</button>
     </div>
   </div>
 
   <!-- Step 2 -->
   <div class="section hidden" id="step2">
-    <h2>2. Crop to Signature Area</h2>
-    <div class="preview">
-      <img id="cropImage" alt="Crop source" class="hidden">
-    </div>
+    <h2>Step 2 — Crop Image</h2>
+    <canvas id="cropCanvas"></canvas>
     <div class="actions">
-      <button class="ghost" id="s2Back">Back</button>
-      <button class="secondary" id="s2Reset">Reset Crop</button>
-      <button id="s2Next" disabled>Next: Extract</button>
+      <button class="secondary" id="s2Back">Back</button>
+      <button id="s2Next">Next</button>
     </div>
-    <p class="muted">Pinch to zoom, drag to position. When ready, tap “Next: Extract”.</p>
   </div>
 
   <!-- Step 3 -->
   <div class="section hidden" id="step3">
-    <h2>3. Extract Signature (Dark Strokes Only)</h2>
-    <div class="row">
-      <label style="flex:1">
-        Threshold
-        <input type="range" id="threshold" min="0" max="255" value="200">
-      </label>
-      <div class="muted">Higher = keep only darker strokes</div>
+    <h2>Step 3 — Extract Signature</h2>
+    <canvas id="extractCanvas"></canvas>
+    <div class="actions">
+      <button class="secondary" id="s3Back">Back</button>
+      <button id="s3Next">Next: Place in PDF</button>
     </div>
-    <div class="preview">
-      <canvas id="resultCanvas"></canvas>
-    </div>
-    <div class="actions" style="margin-top:12px">
-      <button class="ghost" id="s3Back">Back</button>
-      <button id="downloadBtn" disabled>Download Transparent PNG</button>
-    </div>
-    <p class="muted">The white/grey background is removed. Only the signature stays on transparency.</p>
   </div>
 
-  <div class="section" id="step4">
-  <h2>Step 4 — Place Signature in PDF</h2>
-  <label>Upload PDF File
-    <input type="file" id="pdfUpload" accept="application/pdf">
-  </label>
-  <div id="pdfContainer">
-    <canvas id="pdfCanvas"></canvas>
-    <!-- This box will later be replaced by actual signature PNG -->
-    <div id="sigBox"></div>
+  <!-- Step 4 -->
+  <div class="section hidden" id="step4">
+    <h2>Step 4 — Place Signature in PDF</h2>
+    <input type="file" id="pdfUpload" accept="application/pdf" />
+    <div style="position:relative;display:inline-block;">
+      <canvas id="pdfCanvas" style="border:1px solid #ccc;max-width:100%;"></canvas>
+      <div id="sigBox" class="hidden">✍️ Signature</div>
+    </div>
+    <div class="actions">
+      <button class="secondary" id="s4Back">Back</button>
+      <button id="s4Done">Generate PDF</button>
+    </div>
   </div>
-</div>
 </main>
 
-<script src="https://cdnjs.cloudflare.com/ajax/libs/cropperjs/1.5.13/cropper.min.js"></script>
-<script src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/2.16.105/pdf.min.js"></script>
+<!-- Libraries -->
+<script src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/2.14.305/pdf.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/pdf-lib/1.17.1/pdf-lib.min.js"></script>
+
 <script>
-  // Elements
-  const step1 = document.getElementById('step1');
-  const step2 = document.getElementById('step2');
-  const step3 = document.getElementById('step3');
-  const pills = [document.getElementById('pi1'), document.getElementById('pi2'), document.getElementById('pi3')];
+const stepEls=[step1,step2,step3,step4];
+const pills=[pi1,pi2,pi3,pi4];
+function go(step){
+  stepEls.forEach((el,i)=>el.classList.toggle('hidden',i!==step-1));
+  pills.forEach((p,i)=>p.classList.toggle('active',i===step-1));
+}
+pills.forEach((pill,i)=>pill.addEventListener('click',()=>go(i+1)));
 
-  const fileInput = document.getElementById('fileInput');
-  const s1Next = document.getElementById('s1Next');
-
-  const cropImage = document.getElementById('cropImage');
-  const s2Back = document.getElementById('s2Back');
-  const s2Reset = document.getElementById('s2Reset');
-  const s2Next = document.getElementById('s2Next');
-
-  const threshold = document.getElementById('threshold');
-  const resultCanvas = document.getElementById('resultCanvas');
-  const downloadBtn = document.getElementById('downloadBtn');
-  const rctx = resultCanvas.getContext('2d');
-
-  // State
-  let cropper = null;
-  let sourceImg = null;
-  let croppedCanvas = null;
-  let uploadedName = 'signature';
-
-  // Wizard nav
-  function go(step) {
-    [step1, step2, step3].forEach((el, i) => {
-      el.classList.toggle('hidden', i !== (step-1));
-      pills[i].classList.toggle('active', i === (step-1));
-    });
+// Step 1
+let uploadedImg=null;
+fileInput.addEventListener('change',e=>{
+  const file=e.target.files[0];
+  if(file){
+    const r=new FileReader();
+    r.onload=()=>{uploadedImg=new Image();uploadedImg.onload=()=>{
+      const ctx=cropCanvas.getContext('2d');
+      cropCanvas.width=uploadedImg.width;
+      cropCanvas.height=uploadedImg.height;
+      ctx.drawImage(uploadedImg,0,0);
+      s1Next.disabled=false;
+    };uploadedImg.src=r.result;};
+    r.readAsDataURL(file);
   }
+});
+s1Next.addEventListener('click',()=>go(2));
 
-  // Step 1: upload
-  fileInput.addEventListener('change', (e) => {
-    const file = e.target.files?.[0];
-    if (!file) return;
-    uploadedName = (file.name || 'signature').replace(/\.[^.]+$/,'') || 'signature';
+// Step 2
+s2Back.addEventListener('click',()=>go(1));
+s2Next.addEventListener('click',()=>{
+  const ctx=extractCanvas.getContext('2d');
+  extractCanvas.width=cropCanvas.width;
+  extractCanvas.height=cropCanvas.height;
+  ctx.drawImage(cropCanvas,0,0);
+  go(3);
+});
 
-    const reader = new FileReader();
-    reader.onload = ev => {
-      sourceImg = new Image();
-      sourceImg.onload = () => {
-        // Prepare crop image element
-        cropImage.src = sourceImg.src = ev.target.result;
-        cropImage.classList.remove('hidden');
-        s1Next.disabled = false;
-      };
-      sourceImg.src = ev.target.result;
-    };
-    reader.readAsDataURL(file);
-  });
+// Step 3
+s3Back.addEventListener('click',()=>go(2));
+s3Next.addEventListener('click',()=>go(4));
 
-  s1Next.addEventListener('click', () => {
-    go(2);
-    // Init cropper
-    if (cropper) cropper.destroy();
-    cropper = new Cropper(cropImage, {
-      viewMode: 1,
-      dragMode: 'move',
-      autoCrop: true,
-      background: false,
-      movable: true,
-      zoomable: true,
-      scalable: false,
-      responsive: true,
-      minContainerWidth: 300,
-      minContainerHeight: 200,
-      ready() { s2Next.disabled = false; }
-    });
-  });
-
-  // Step 2 controls
-  s2Back.addEventListener('click', () => {
-    if (cropper) { cropper.destroy(); cropper = null; }
-    s2Next.disabled = true;
-    go(1);
-  });
-
-  s2Reset.addEventListener('click', () => {
-    if (cropper) cropper.reset();
-  });
-
-  s2Next.addEventListener('click', () => {
-    if (!cropper) return;
-    // Get cropped area as canvas (fill white to ensure consistent input for extraction)
-    croppedCanvas = cropper.getCroppedCanvas({ fillColor: '#ffffff' });
-    go(3);
-    renderExtraction(); // initial render
-    downloadBtn.disabled = false;
-  });
-
-  // Step 3: extraction
-  threshold.addEventListener('input', renderExtraction);
-
-  function renderExtraction() {
-    if (!croppedCanvas) return;
-    // Draw cropped onto result, then process pixels
-    resultCanvas.width = croppedCanvas.width;
-    resultCanvas.height = croppedCanvas.height;
-
-    // Draw the cropped image snapshot
-    rctx.drawImage(croppedCanvas, 0, 0);
-
-    const imgData = rctx.getImageData(0, 0, resultCanvas.width, resultCanvas.height);
-    const data = imgData.data;
-    const th = parseInt(threshold.value, 10);
-
-    for (let i = 0; i < data.length; i += 4) {
-      const r = data[i], g = data[i+1], b = data[i+2];
-      // Luma (perceived brightness): 0=black, 255=white
-      const brightness = 0.299*r + 0.587*g + 0.114*b;
-
-      if (brightness > th) {
-        // background → transparent
-        data[i+3] = 0;
-      } else {
-        // keep stroke, enforce solid black for clarity
-        data[i] = 0; data[i+1] = 0; data[i+2] = 0; data[i+3] = 255;
-      }
-    }
-    rctx.putImageData(imgData, 0, 0);
-  }
-
-  // Step 3 nav
-  document.getElementById('s3Back').addEventListener('click', () => {
-    go(2);
-  });
-  
 // Step 4
-const pdfInput = document.getElementById('pdfUpload'); // renamed to avoid conflict
-const pdfCanvas = document.getElementById('pdfCanvas');
-const pdfCtx = pdfCanvas.getContext('2d');
-const sigBox = document.getElementById('sigBox');
+s4Back.addEventListener('click',()=>go(3));
 
-// PDF.js worker config
-pdfjsLib.GlobalWorkerOptions.workerSrc =
-  "https://cdnjs.cloudflare.com/ajax/libs/pdf.js/2.16.105/pdf.worker.min.js";
+// draggable signature box
+let isDragging=false, offsetX=0, offsetY=0;
+sigBox.addEventListener('mousedown',e=>{
+  isDragging=true;
+  offsetX=e.offsetX; offsetY=e.offsetY;
+});
+document.addEventListener('mousemove',e=>{
+  if(isDragging){
+    sigBox.style.left=(e.pageX-pdfCanvas.offsetLeft-offsetX)+"px";
+    sigBox.style.top=(e.pageY-pdfCanvas.offsetTop-offsetY)+"px";
+  }
+});
+document.addEventListener('mouseup',()=>isDragging=false);
 
-// Upload + render first page
-pdfInput.addEventListener('change', (e) => {
-  const file = e.target.files[0];
-  if (!file) return;
-  const reader = new FileReader();
-  reader.onload = function(ev) {
-    const pdfData = new Uint8Array(ev.target.result);
-    pdfjsLib.getDocument({ data: pdfData }).promise.then(pdf => {
-      pdf.getPage(1).then(page => {
-        const viewport = page.getViewport({ scale: 1.2 });
-        pdfCanvas.width = viewport.width;
-        pdfCanvas.height = viewport.height;
-        page.render({ canvasContext: pdfCtx, viewport }).promise.then(() => {
-          console.log("PDF page rendered");
-        });
-      });
-    });
+// load PDF first page
+pdfUpload.addEventListener('change',async e=>{
+  const file=e.target.files[0];
+  if(!file)return;
+  const reader=new FileReader();
+  reader.onload=async()=>{
+    const pdfData=new Uint8Array(reader.result);
+    const pdf=await pdfjsLib.getDocument({data:pdfData}).promise;
+    const page=await pdf.getPage(1);
+    const viewport=page.getViewport({scale:1.5});
+    pdfCanvas.width=viewport.width;
+    pdfCanvas.height=viewport.height;
+    const ctx=pdfCanvas.getContext('2d');
+    await page.render({canvasContext:ctx,viewport}).promise;
+    sigBox.classList.remove('hidden'); // show signature box
   };
   reader.readAsArrayBuffer(file);
 });
-
-// Make signature box draggable
-let isDragging = false, startX, startY, startLeft, startTop;
-sigBox.addEventListener('mousedown', (e) => {
-  if (e.target === sigBox) {
-    isDragging = true;
-    startX = e.clientX;
-    startY = e.clientY;
-    startLeft = sigBox.offsetLeft;
-    startTop = sigBox.offsetTop;
-  }
-});
-document.addEventListener('mousemove', (e) => {
-  if (!isDragging) return;
-  const dx = e.clientX - startX;
-  const dy = e.clientY - startY;
-  sigBox.style.left = (startLeft + dx) + "px";
-  sigBox.style.top = (startTop + dy) + "px";
-});
-document.addEventListener('mouseup', () => { isDragging = false; });
-  // Download
-  downloadBtn.addEventListener('click', () => {
-    const a = document.createElement('a');
-    a.download = `${uploadedName}-signature.png`;
-    a.href = resultCanvas.toDataURL('image/png');
-    a.click();
-  });
-
-  // Init
-  go(1);
 </script>
 </body>
 </html>
