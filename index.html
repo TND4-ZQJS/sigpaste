@@ -1,245 +1,124 @@
 <!doctype html>
 <html lang="en">
 <head>
-  <meta charset="utf-8" />
-  <title>Signature Extraction Wizard</title>
-  <meta name="viewport" content="width=device-width,initial-scale=1" />
-  <!-- Your style system -->
+  <meta charset="UTF-8">
+  <title>Signature Extraction Tool</title>
+  <link href="https://cdnjs.cloudflare.com/ajax/libs/cropperjs/1.5.13/cropper.min.css" rel="stylesheet"/>
   <style>
-    :root{
-      --bg:#f6f7f9; --card:#fff; --accent:#007aff; --muted:#666; --line:#e9e9ee;
-    }
-    *{box-sizing:border-box}
-    body{font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,Arial;margin:18px;background:var(--bg);color:#111}
-    main{max-width:980px;margin:0 auto;background:var(--card);padding:18px;border-radius:12px;box-shadow:0 8px 28px rgba(0,0,0,0.06)}
-    h1{margin:15px 0 35px 0;font-size:1.50rem}
-    .section{background:#fbfbfd;border:1px solid #eee;padding:14px;border-radius:10px;margin:12px 0}
-    .section h2{margin:0 0 10px 0;font-size:1.05rem}
-    label{display:block;margin:8px 0;font-size:0.95rem}
-    input[type=file]{margin-top:6px}
-    .row{display:flex;gap:12px;align-items:center;flex-wrap:wrap;margin:8px 0}
-    .muted{color:var(--muted);font-size:0.85rem}
-    button{background:var(--accent);color:#fff;border:0;padding:10px 14px;border-radius:10px;cursor:pointer}
-    button.secondary{background:#999}
-    button.ghost{background:transparent;border:1px solid var(--line);color:#333}
-    .actions{display:flex;gap:12px;align-items:center}
-    /* Minimal extras */
-    .hidden{display:none}
-    .preview{margin-top:10px;text-align:center}
-    img, canvas{max-width:100%;border:1px solid var(--line);border-radius:8px}
-    .step-indicator{display:flex;gap:8px;flex-wrap:wrap;margin:0 0 8px 0}
-    .pill{padding:6px 10px;border:1px solid var(--line);border-radius:999px;font-size:0.85rem}
-    .pill.active{border-color:var(--accent);color:#fff;background:var(--accent)}
-
-    #pdfContainer { position: relative; display: inline-block; }
-    #pdfCanvas { border: 1px solid #ccc; display:block; margin-bottom:12px; }
-    #sigBox {position: absolute; 
-             top: 50px; left: 50px;
-             width: 150px; height: 60px;
-             border: 2px dashed #007aff;
-             background: rgba(0,122,255,0.1);
-             cursor: move;
-             resize: both;
-             overflow: auto;
-      }
-  
+    body { font-family: sans-serif; margin: 20px; }
+    #preview { margin-top: 20px; }
+    img { max-width: 100%; }
+    button { margin-top: 10px; }
+    .slider { width: 200px; }
   </style>
-
-  <!-- Cropper.js -->
-  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/cropperjs/1.5.13/cropper.min.css"/>
 </head>
 <body>
-<main>
-  <h1>Signature Extraction (Wizard)</h1>
+  <h2>Signature Extraction (Dark strokes only)</h2>
 
-  <!-- Step indicator -->
-  <div class="step-indicator">
-    <span class="pill" id="pi1">1. Upload</span>
-    <span class="pill" id="pi2">2. Crop</span>
-    <span class="pill" id="pi3">3. Extract & Download</span>
+  <!-- Step 1: Upload -->
+  <input type="file" id="upload" accept="image/*"><br><br>
+  <div>
+    <img id="image" style="max-width:500px; display:none;">
+  </div>
+  
+  <!-- Threshold slider -->
+  <label>
+    Signature threshold:
+    <input type="range" id="threshold" min="0" max="255" value="200" class="slider">
+    <span id="thresholdValue">200</span>
+  </label>
+  <br>
+
+  <button id="cropBtn" style="display:none;">Extract Signature</button>
+  <button id="downloadBtn" style="display:none;">Download PNG</button>
+
+  <!-- Step 3: Result -->
+  <div id="preview">
+    <h3>Extracted Signature:</h3>
+    <canvas id="canvas"></canvas>
   </div>
 
-  <!-- Step 1 -->
-  <div class="section" id="step1">
-    <h2>1. Upload Image</h2>
-    <label>
-      Choose a photo/scan of your signature
-      <input type="file" id="fileInput" accept="image/*">
-    </label>
-    <p class="muted">Tip: A photo on white paper works best. You can rotate/zoom during cropping.</p>
-    <div class="actions">
-      <button class="ghost" id="s1Next" disabled>Next: Crop</button>
-    </div>
-  </div>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/cropperjs/1.5.13/cropper.min.js"></script>
+  <script>
+    let cropper;
+    let croppedCanvas;
 
-  <!-- Step 2 -->
-  <div class="section hidden" id="step2">
-    <h2>2. Crop to Signature Area</h2>
-    <div class="preview">
-      <img id="cropImage" alt="Crop source" class="hidden">
-    </div>
-    <div class="actions">
-      <button class="ghost" id="s2Back">Back</button>
-      <button class="secondary" id="s2Reset">Reset Crop</button>
-      <button id="s2Next" disabled>Next: Extract</button>
-    </div>
-    <p class="muted">Pinch to zoom, drag to position. When ready, tap “Next: Extract”.</p>
-  </div>
-
-  <!-- Step 3 -->
-  <div class="section hidden" id="step3">
-    <h2>3. Extract Signature (Dark Strokes Only)</h2>
-    <div class="row">
-      <label style="flex:1">
-        Threshold
-        <input type="range" id="threshold" min="0" max="255" value="200">
-      </label>
-      <div class="muted">Higher = keep only darker strokes</div>
-    </div>
-    <div class="preview">
-      <canvas id="resultCanvas"></canvas>
-    </div>
-    <div class="actions" style="margin-top:12px">
-      <button class="ghost" id="s3Back">Back</button>
-      <button id="downloadBtn" disabled>Download Transparent PNG</button>
-    </div>
-    <p class="muted">The white/grey background is removed. Only the signature stays on transparency.</p>
-  </div>
-
-
-</main>
-
-<script src="https://cdnjs.cloudflare.com/ajax/libs/cropperjs/1.5.13/cropper.min.js"></script>
-<script src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/2.16.105/pdf.min.js"></script>
-<script>
-  // Elements
-  const step1 = document.getElementById('step1');
-  const step2 = document.getElementById('step2');
-  const step3 = document.getElementById('step3');
-  const pills = [document.getElementById('pi1'), document.getElementById('pi2'), document.getElementById('pi3')];
-
-  const fileInput = document.getElementById('fileInput');
-  const s1Next = document.getElementById('s1Next');
-
-  const cropImage = document.getElementById('cropImage');
-  const s2Back = document.getElementById('s2Back');
-  const s2Reset = document.getElementById('s2Reset');
-  const s2Next = document.getElementById('s2Next');
-
-  const threshold = document.getElementById('threshold');
-  const resultCanvas = document.getElementById('resultCanvas');
-  const downloadBtn = document.getElementById('downloadBtn');
-  const rctx = resultCanvas.getContext('2d');
-
-  // State
-  let cropper = null;
-  let sourceImg = null;
-  let croppedCanvas = null;
-  let uploadedName = 'signature';
-
-  // Wizard nav
-  function go(step) {
-    [step1, step2, step3].forEach((el, i) => {
-      el.classList.toggle('hidden', i !== (step-1));
-      pills[i].classList.toggle('active', i === (step-1));
+    const thresholdInput = document.getElementById("threshold");
+    const thresholdValue = document.getElementById("thresholdValue");
+    thresholdInput.addEventListener("input", () => {
+      thresholdValue.textContent = thresholdInput.value;
+      if (croppedCanvas) applySignatureExtraction();
     });
-  }
 
-  // Step 1: upload
-  fileInput.addEventListener('change', (e) => {
-    const file = e.target.files?.[0];
-    if (!file) return;
-    uploadedName = (file.name || 'signature').replace(/\.[^.]+$/,'') || 'signature';
+    // Step 1: Upload
+    document.getElementById("upload").addEventListener("change", function (e) {
+      const file = e.target.files[0];
+      if (!file) return;
 
-    const reader = new FileReader();
-    reader.onload = ev => {
-      sourceImg = new Image();
-      sourceImg.onload = () => {
-        // Prepare crop image element
-        cropImage.src = sourceImg.src = ev.target.result;
-        cropImage.classList.remove('hidden');
-        s1Next.disabled = false;
+      const reader = new FileReader();
+      reader.onload = function (event) {
+        const img = document.getElementById("image");
+        img.src = event.target.result;
+        img.style.display = "block";
+
+        if (cropper) cropper.destroy(); 
+        cropper = new Cropper(img, { aspectRatio: NaN });
+        document.getElementById("cropBtn").style.display = "inline-block";
       };
-      sourceImg.src = ev.target.result;
-    };
-    reader.readAsDataURL(file);
-  });
-
-  s1Next.addEventListener('click', () => {
-    go(2);
-    // Init cropper
-    if (cropper) cropper.destroy();
-    cropper = new Cropper(cropImage, {
-      viewMode: 1,
-      dragMode: 'move',
-      autoCrop: true,
-      background: false,
-      movable: true,
-      zoomable: true,
-      scalable: false,
-      responsive: true,
-      minContainerWidth: 300,
-      minContainerHeight: 200,
-      ready() { s2Next.disabled = false; }
+      reader.readAsDataURL(file);
     });
-  });
 
-  // Step 2 controls
-  s2Back.addEventListener('click', () => {
-    if (cropper) { cropper.destroy(); cropper = null; }
-    s2Next.disabled = true;
-    go(1);
-  });
+    // Step 2: Crop
+    document.getElementById("cropBtn").addEventListener("click", function () {
+      if (!cropper) return;
+      croppedCanvas = cropper.getCroppedCanvas();
+      applySignatureExtraction();
+      document.getElementById("downloadBtn").style.display = "inline-block";
+    });
 
-  s2Reset.addEventListener('click', () => {
-    if (cropper) cropper.reset();
-  });
+    // Signature extraction (dark strokes only)
+    function applySignatureExtraction() {
+      if (!croppedCanvas) return;
+      const threshold = parseInt(thresholdInput.value, 10);
 
-  s2Next.addEventListener('click', () => {
-    if (!cropper) return;
-    // Get cropped area as canvas (fill white to ensure consistent input for extraction)
-    croppedCanvas = cropper.getCroppedCanvas({ fillColor: '#ffffff' });
-    go(3);
-    renderExtraction(); // initial render
-    downloadBtn.disabled = false;
-  });
+      const ctx = croppedCanvas.getContext("2d");
+      const imgData = ctx.getImageData(0, 0, croppedCanvas.width, croppedCanvas.height);
 
-  // Step 3: extraction
-  threshold.addEventListener('input', renderExtraction);
+      for (let i = 0; i < imgData.data.length; i += 4) {
+        const r = imgData.data[i];
+        const g = imgData.data[i + 1];
+        const b = imgData.data[i + 2];
 
-  function renderExtraction() {
-    if (!croppedCanvas) return;
-    // Draw cropped onto result, then process pixels
-    resultCanvas.width = croppedCanvas.width;
-    resultCanvas.height = croppedCanvas.height;
+        // brightness (0=black, 255=white)
+        const brightness = 0.299 * r + 0.587 * g + 0.114 * b;
 
-    // Draw the cropped image snapshot
-    rctx.drawImage(croppedCanvas, 0, 0);
-
-    const imgData = rctx.getImageData(0, 0, resultCanvas.width, resultCanvas.height);
-    const data = imgData.data;
-    const th = parseInt(threshold.value, 10);
-
-    for (let i = 0; i < data.length; i += 4) {
-      const r = data[i], g = data[i+1], b = data[i+2];
-      // Luma (perceived brightness): 0=black, 255=white
-      const brightness = 0.299*r + 0.587*g + 0.114*b;
-
-      if (brightness > th) {
-        // background → transparent
-        data[i+3] = 0;
-      } else {
-        // keep stroke, enforce solid black for clarity
-        data[i] = 0; data[i+1] = 0; data[i+2] = 0; data[i+3] = 255;
+        if (brightness > threshold) {
+          imgData.data[i + 3] = 0; // transparent background
+        } else {
+          // keep strokes, force them to dark color
+          imgData.data[i] = 0;
+          imgData.data[i+1] = 0;
+          imgData.data[i+2] = 0;
+        }
       }
-    }
-    rctx.putImageData(imgData, 0, 0);
-  }
 
-  // Step 3 nav
-  document.getElementById('s3Back').addEventListener('click', () => {
-    go(2);
-  });
-</script>
+      ctx.putImageData(imgData, 0, 0);
+
+      // Show result in preview canvas
+      const resultCanvas = document.getElementById("canvas");
+      resultCanvas.width = croppedCanvas.width;
+      resultCanvas.height = croppedCanvas.height;
+      resultCanvas.getContext("2d").drawImage(croppedCanvas, 0, 0);
+    }
+
+    // Step 3: Download PNG
+    document.getElementById("downloadBtn").addEventListener("click", function () {
+      const resultCanvas = document.getElementById("canvas");
+      const link = document.createElement("a");
+      link.download = "signature.png";
+      link.href = resultCanvas.toDataURL("image/png");
+      link.click();
+    });
+  </script>
 </body>
 </html>
