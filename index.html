@@ -1,97 +1,240 @@
 <!doctype html>
 <html lang="en">
 <head>
-  <meta charset="UTF-8">
-  <title>Image Crop & Transparent Background</title>
-  <link href="https://cdnjs.cloudflare.com/ajax/libs/cropperjs/1.5.13/cropper.min.css" rel="stylesheet"/>
+  <meta charset="utf-8" />
+  <title>Signature Extraction Wizard</title>
+  <meta name="viewport" content="width=device-width,initial-scale=1" />
+  <!-- Your style system -->
   <style>
-    body { font-family: sans-serif; margin: 20px; }
-    #preview { margin-top: 20px; }
-    img { max-width: 100%; }
-    button { margin-top: 10px; }
+    :root{
+      --bg:#f6f7f9; --card:#fff; --accent:#007aff; --muted:#666; --line:#e9e9ee;
+    }
+    *{box-sizing:border-box}
+    body{font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,Arial;margin:18px;background:var(--bg);color:#111}
+    main{max-width:980px;margin:0 auto;background:var(--card);padding:18px;border-radius:12px;box-shadow:0 8px 28px rgba(0,0,0,0.06)}
+    h1{margin:15px 0 35px 0;font-size:1.50rem}
+    .section{background:#fbfbfd;border:1px solid #eee;padding:14px;border-radius:10px;margin:12px 0}
+    .section h2{margin:0 0 10px 0;font-size:1.05rem}
+    label{display:block;margin:8px 0;font-size:0.95rem}
+    input[type=file]{margin-top:6px}
+    .row{display:flex;gap:12px;align-items:center;flex-wrap:wrap;margin:8px 0}
+    .muted{color:var(--muted);font-size:0.85rem}
+    button{background:var(--accent);color:#fff;border:0;padding:10px 14px;border-radius:10px;cursor:pointer}
+    button.secondary{background:#999}
+    button.ghost{background:transparent;border:1px solid var(--line);color:#333}
+    .actions{display:flex;gap:12px;align-items:center}
+    /* Minimal extras */
+    .hidden{display:none}
+    .preview{margin-top:10px;text-align:center}
+    img, canvas{max-width:100%;border:1px solid var(--line);border-radius:8px}
+    .step-indicator{display:flex;gap:8px;flex-wrap:wrap;margin:0 0 8px 0}
+    .pill{padding:6px 10px;border:1px solid var(--line);border-radius:999px;font-size:0.85rem}
+    .pill.active{border-color:var(--accent);color:#fff;background:var(--accent)}
   </style>
+
+  <!-- Cropper.js -->
+  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/cropperjs/1.5.13/cropper.min.css"/>
 </head>
 <body>
-  <h2>Step 1–3: Upload → Crop → Transparent Background</h2>
+<main>
+  <h1>Signature Extraction (Wizard)</h1>
 
-  <!-- Step 1: Upload -->
-  <input type="file" id="upload" accept="image/*"><br><br>
-  <div>
-    <img id="image" style="max-width:500px; display:none;">
-  </div>
-  <button id="cropBtn" style="display:none;">Crop & Make Transparent</button>
-  <button id="downloadBtn" style="display:none;">Download PNG</button>
-
-  <!-- Step 3: Result -->
-  <div id="preview">
-    <h3>Transparent Result:</h3>
-    <canvas id="canvas"></canvas>
+  <!-- Step indicator -->
+  <div class="step-indicator">
+    <span class="pill" id="pi1">1. Upload</span>
+    <span class="pill" id="pi2">2. Crop</span>
+    <span class="pill" id="pi3">3. Extract & Download</span>
   </div>
 
-  <script src="https://cdnjs.cloudflare.com/ajax/libs/cropperjs/1.5.13/cropper.min.js"></script>
-  <script>
-    let cropper;
+  <!-- Step 1 -->
+  <div class="section" id="step1">
+    <h2>1. Upload Image</h2>
+    <label>
+      Choose a photo/scan of your signature
+      <input type="file" id="fileInput" accept="image/*">
+    </label>
+    <p class="muted">Tip: A photo on white paper works best. You can rotate/zoom during cropping.</p>
+    <div class="actions">
+      <button class="ghost" id="s1Next" disabled>Next: Crop</button>
+    </div>
+  </div>
 
-    // Step 1: Upload
-    document.getElementById("upload").addEventListener("change", function (e) {
-      const file = e.target.files[0];
-      if (!file) return;
+  <!-- Step 2 -->
+  <div class="section hidden" id="step2">
+    <h2>2. Crop to Signature Area</h2>
+    <div class="preview">
+      <img id="cropImage" alt="Crop source" class="hidden">
+    </div>
+    <div class="actions">
+      <button class="ghost" id="s2Back">Back</button>
+      <button class="secondary" id="s2Reset">Reset Crop</button>
+      <button id="s2Next" disabled>Next: Extract</button>
+    </div>
+    <p class="muted">Pinch to zoom, drag to position. When ready, tap “Next: Extract”.</p>
+  </div>
 
-      const reader = new FileReader();
-      reader.onload = function (event) {
-        const img = document.getElementById("image");
-        img.src = event.target.result;
-        img.style.display = "block";
+  <!-- Step 3 -->
+  <div class="section hidden" id="step3">
+    <h2>3. Extract Signature (Dark Strokes Only)</h2>
+    <div class="row">
+      <label style="flex:1">
+        Threshold
+        <input type="range" id="threshold" min="0" max="255" value="200">
+      </label>
+      <div class="muted">Higher = keep only darker strokes</div>
+    </div>
+    <div class="preview">
+      <canvas id="resultCanvas"></canvas>
+    </div>
+    <div class="actions" style="margin-top:12px">
+      <button class="ghost" id="s3Back">Back</button>
+      <button id="downloadBtn" disabled>Download Transparent PNG</button>
+    </div>
+    <p class="muted">The white/grey background is removed. Only the signature stays on transparency.</p>
+  </div>
+</main>
 
-        if (cropper) cropper.destroy(); // reset old cropper
-        cropper = new Cropper(img, { aspectRatio: NaN }); // free crop
-        document.getElementById("cropBtn").style.display = "inline-block";
+<script src="https://cdnjs.cloudflare.com/ajax/libs/cropperjs/1.5.13/cropper.min.js"></script>
+<script>
+  // Elements
+  const step1 = document.getElementById('step1');
+  const step2 = document.getElementById('step2');
+  const step3 = document.getElementById('step3');
+  const pills = [document.getElementById('pi1'), document.getElementById('pi2'), document.getElementById('pi3')];
+
+  const fileInput = document.getElementById('fileInput');
+  const s1Next = document.getElementById('s1Next');
+
+  const cropImage = document.getElementById('cropImage');
+  const s2Back = document.getElementById('s2Back');
+  const s2Reset = document.getElementById('s2Reset');
+  const s2Next = document.getElementById('s2Next');
+
+  const threshold = document.getElementById('threshold');
+  const resultCanvas = document.getElementById('resultCanvas');
+  const downloadBtn = document.getElementById('downloadBtn');
+  const rctx = resultCanvas.getContext('2d');
+
+  // State
+  let cropper = null;
+  let sourceImg = null;
+  let croppedCanvas = null;
+  let uploadedName = 'signature';
+
+  // Wizard nav
+  function go(step) {
+    [step1, step2, step3].forEach((el, i) => {
+      el.classList.toggle('hidden', i !== (step-1));
+      pills[i].classList.toggle('active', i === (step-1));
+    });
+  }
+
+  // Step 1: upload
+  fileInput.addEventListener('change', (e) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    uploadedName = (file.name || 'signature').replace(/\.[^.]+$/,'') || 'signature';
+
+    const reader = new FileReader();
+    reader.onload = ev => {
+      sourceImg = new Image();
+      sourceImg.onload = () => {
+        // Prepare crop image element
+        cropImage.src = sourceImg.src = ev.target.result;
+        cropImage.classList.remove('hidden');
+        s1Next.disabled = false;
       };
-      reader.readAsDataURL(file);
+      sourceImg.src = ev.target.result;
+    };
+    reader.readAsDataURL(file);
+  });
+
+  s1Next.addEventListener('click', () => {
+    go(2);
+    // Init cropper
+    if (cropper) cropper.destroy();
+    cropper = new Cropper(cropImage, {
+      viewMode: 1,
+      dragMode: 'move',
+      autoCrop: true,
+      background: false,
+      movable: true,
+      zoomable: true,
+      scalable: false,
+      responsive: true,
+      minContainerWidth: 300,
+      minContainerHeight: 200,
+      ready() { s2Next.disabled = false; }
     });
+  });
 
-    // Step 2 & 3: Crop and make transparent
-    document.getElementById("cropBtn").addEventListener("click", function () {
-      if (!cropper) return;
+  // Step 2 controls
+  s2Back.addEventListener('click', () => {
+    if (cropper) { cropper.destroy(); cropper = null; }
+    s2Next.disabled = true;
+    go(1);
+  });
 
-      // Get cropped image as canvas
-      const croppedCanvas = cropper.getCroppedCanvas();
+  s2Reset.addEventListener('click', () => {
+    if (cropper) cropper.reset();
+  });
 
-      // Convert white pixels to transparent
-      const ctx = croppedCanvas.getContext("2d");
-      const imgData = ctx.getImageData(0, 0, croppedCanvas.width, croppedCanvas.height);
+  s2Next.addEventListener('click', () => {
+    if (!cropper) return;
+    // Get cropped area as canvas (fill white to ensure consistent input for extraction)
+    croppedCanvas = cropper.getCroppedCanvas({ fillColor: '#ffffff' });
+    go(3);
+    renderExtraction(); // initial render
+    downloadBtn.disabled = false;
+  });
 
-      for (let i = 0; i < imgData.data.length; i += 4) {
-        const r = imgData.data[i];
-        const g = imgData.data[i + 1];
-        const b = imgData.data[i + 2];
+  // Step 3: extraction
+  threshold.addEventListener('input', renderExtraction);
 
-        // If pixel is "near white" → make transparent
-        if (r > 240 && g > 240 && b > 240) {
-          imgData.data[i + 3] = 0;
-        }
+  function renderExtraction() {
+    if (!croppedCanvas) return;
+    // Draw cropped onto result, then process pixels
+    resultCanvas.width = croppedCanvas.width;
+    resultCanvas.height = croppedCanvas.height;
+
+    // Draw the cropped image snapshot
+    rctx.drawImage(croppedCanvas, 0, 0);
+
+    const imgData = rctx.getImageData(0, 0, resultCanvas.width, resultCanvas.height);
+    const data = imgData.data;
+    const th = parseInt(threshold.value, 10);
+
+    for (let i = 0; i < data.length; i += 4) {
+      const r = data[i], g = data[i+1], b = data[i+2];
+      // Luma (perceived brightness): 0=black, 255=white
+      const brightness = 0.299*r + 0.587*g + 0.114*b;
+
+      if (brightness > th) {
+        // background → transparent
+        data[i+3] = 0;
+      } else {
+        // keep stroke, enforce solid black for clarity
+        data[i] = 0; data[i+1] = 0; data[i+2] = 0; data[i+3] = 255;
       }
+    }
+    rctx.putImageData(imgData, 0, 0);
+  }
 
-      ctx.putImageData(imgData, 0, 0);
+  // Step 3 nav
+  document.getElementById('s3Back').addEventListener('click', () => {
+    go(2);
+  });
 
-      // Show result in preview canvas
-      const resultCanvas = document.getElementById("canvas");
-      resultCanvas.width = croppedCanvas.width;
-      resultCanvas.height = croppedCanvas.height;
-      resultCanvas.getContext("2d").drawImage(croppedCanvas, 0, 0);
+  // Download
+  downloadBtn.addEventListener('click', () => {
+    const a = document.createElement('a');
+    a.download = `${uploadedName}-signature.png`;
+    a.href = resultCanvas.toDataURL('image/png');
+    a.click();
+  });
 
-      // Show download button
-      document.getElementById("downloadBtn").style.display = "inline-block";
-    });
-
-    // Step 4: Download PNG
-    document.getElementById("downloadBtn").addEventListener("click", function () {
-      const resultCanvas = document.getElementById("canvas");
-      const link = document.createElement("a");
-      link.download = "transparent-image.png";
-      link.href = resultCanvas.toDataURL("image/png");
-      link.click();
-    });
-  </script>
+  // Init
+  go(1);
+</script>
 </body>
 </html>
