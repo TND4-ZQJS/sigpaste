@@ -44,6 +44,7 @@
     <span class="pill" id="pi1">1. Upload</span>
     <span class="pill" id="pi2">2. Crop</span>
     <span class="pill" id="pi3">3. Extract & Download</span>
+    <span class="pill" id="pi4">4. Paste</span>
   </div>
 
   <!-- Step 1 -->
@@ -88,19 +89,53 @@
     </div>
     <div class="actions" style="margin-top:12px">
       <button class="ghost" id="s3Back">Back</button>
+      <button id="toStep4Btn" class="secondary" disabled>Next: Paste in PDF</button>
       <button id="downloadBtn" disabled>Download Transparent PNG</button>
     </div>
     <p class="muted">The white/grey background is removed. Only the signature stays on transparency.</p>
   </div>
+
+  <!-- Step 4 -->
+<section id="step4" class="section hidden">
+  <h2>4. Paste Signature on PDF</h2>
+
+  <!-- PDF Upload -->
+  <label>Upload PDF
+    <input type="file" id="pdfUpload" accept="application/pdf">
+  </label>
+
+  <!-- PDF + Signature overlay -->
+  <div id="pdfWrap" style="position:relative; border:1px solid #ddd; margin-top:12px; display:inline-block;">
+    <canvas id="pdfCanvas"></canvas>
+    <img id="sigImg" src=""
+         style="position:absolute; top:50px; left:50px; width:150px; cursor:move; display:none; user-select:none;">
+  </div>
+
+  <!-- Size slider -->
+  <div class="row" style="margin-top:10px;">
+    <label style="flex:1">
+      Resize Signature
+      <input type="range" id="sizeSlider" min="40" max="600" value="150">
+    </label>
+  </div>
+
+  <div class="actions" style="margin-top:12px">
+    <button class="ghost" id="s4Back">Back</button>
+    <button class="ghost" id="s4Soon" disabled>Save PDF (coming soon)</button>
+  </div>
+</section>
+
 </main>
 
 <script src="https://cdnjs.cloudflare.com/ajax/libs/cropperjs/1.5.13/cropper.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/2.16.105/pdf.min.js"></script>
 <script>
   // Elements
   const step1 = document.getElementById('step1');
   const step2 = document.getElementById('step2');
   const step3 = document.getElementById('step3');
-  const pills = [document.getElementById('pi1'), document.getElementById('pi2'), document.getElementById('pi3')];
+  const step4 = document.getElementById('step4');
+  const pills = [document.getElementById('pi1'), document.getElementById('pi2'), document.getElementById('pi3'), document.getElementById('pi4')];
 
   const fileInput = document.getElementById('fileInput');
   const s1Next = document.getElementById('s1Next');
@@ -123,7 +158,7 @@
 
   // Wizard nav
   function go(step) {
-    [step1, step2, step3].forEach((el, i) => {
+    [step1, step2, step3, step4].forEach((el, i) => {
       el.classList.toggle('hidden', i !== (step-1));
       pills[i].classList.toggle('active', i === (step-1));
     });
@@ -186,6 +221,7 @@
     go(3);
     renderExtraction(); // initial render
     downloadBtn.disabled = false;
+    enableNextToStep4();
   });
 
   // Step 3: extraction
@@ -225,6 +261,91 @@
     go(2);
   });
 
+  // Enable "Next: Paste in PDF" when we have a result
+function enableNextToStep4() {
+  document.getElementById('toStep4Btn').disabled = false;
+}
+
+// Step 3 → Step 4
+function goToStep4() {
+  // send the PNG to Step 4's overlay image
+  const sigImg = document.getElementById('sigImg');
+  sigImg.src = resultCanvas.toDataURL('image/png');
+  sigImg.style.display = 'block';
+  // set initial width from slider
+  sigImg.style.width = document.getElementById('sizeSlider').value + 'px';
+  go(4);
+}
+
+document.getElementById('toStep4Btn').addEventListener('click', goToStep4);
+document.getElementById('s4Back').addEventListener('click', () => go(3));
+
+// ---- Step 4 logic ----
+
+// pdf.js worker (match your pdf.js version)
+if (window['pdfjsLib']) {
+  pdfjsLib.GlobalWorkerOptions.workerSrc =
+    "https://cdnjs.cloudflare.com/ajax/libs/pdf.js/2.16.105/pdf.worker.min.js";
+}
+
+// Render first page of uploaded PDF
+const pdfCanvas = document.getElementById('pdfCanvas');
+const pdfCtx = pdfCanvas.getContext('2d');
+
+document.getElementById('pdfUpload').addEventListener('change', async (e) => {
+  const file = e.target.files?.[0];
+  if (!file) return;
+
+  const buf = await file.arrayBuffer();
+  const pdf = await pdfjsLib.getDocument({ data: buf }).promise;
+  const page = await pdf.getPage(1);
+
+  // Scale to a comfortable preview size
+  const viewport = page.getViewport({ scale: 1.5 });
+  pdfCanvas.width = viewport.width;
+  pdfCanvas.height = viewport.height;
+
+  await page.render({ canvasContext: pdfCtx, viewport }).promise;
+});
+
+// Drag signature overlay
+(function enableSigDrag() {
+  const sig = document.getElementById('sigImg');
+  const wrap = document.getElementById('pdfWrap');
+  let dragging = false, offsetX = 0, offsetY = 0;
+
+  sig.addEventListener('mousedown', (e) => {
+    dragging = true;
+    const rect = sig.getBoundingClientRect();
+    offsetX = e.clientX - rect.left;
+    offsetY = e.clientY - rect.top;
+    e.preventDefault();
+  });
+
+  document.addEventListener('mousemove', (e) => {
+    if (!dragging) return;
+    const wrapRect = wrap.getBoundingClientRect();
+    let x = e.clientX - wrapRect.left - offsetX;
+    let y = e.clientY - wrapRect.top - offsetY;
+
+    // Optional bounds (keep within wrap)
+    x = Math.max(0, Math.min(x, wrap.clientWidth - sig.clientWidth));
+    y = Math.max(0, Math.min(y, wrap.clientHeight - sig.clientHeight));
+
+    sig.style.left = x + 'px';
+    sig.style.top = y + 'px';
+  });
+
+  document.addEventListener('mouseup', () => dragging = false);
+})();
+
+// Resize with slider
+document.getElementById('sizeSlider').addEventListener('input', (e) => {
+  document.getElementById('sigImg').style.width = e.target.value + 'px';
+});
+
+  
+  
   // Download
   downloadBtn.addEventListener('click', () => {
     const a = document.createElement('a');
