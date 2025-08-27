@@ -308,35 +308,54 @@ document.getElementById('pdfUpload').addEventListener('change', async (e) => {
   await page.render({ canvasContext: pdfCtx, viewport }).promise;
 });
 
-// Drag signature overlay
+  // Drag signature overlay (mouse + touch)
 (function enableSigDrag() {
   const sig = document.getElementById('sigImg');
   const wrap = document.getElementById('pdfWrap');
   let dragging = false, offsetX = 0, offsetY = 0;
 
-  sig.addEventListener('mousedown', (e) => {
+  function startDrag(clientX, clientY) {
     dragging = true;
     const rect = sig.getBoundingClientRect();
-    offsetX = e.clientX - rect.left;
-    offsetY = e.clientY - rect.top;
-    e.preventDefault();
-  });
+    offsetX = clientX - rect.left;
+    offsetY = clientY - rect.top;
+  }
 
-  document.addEventListener('mousemove', (e) => {
+  function doDrag(clientX, clientY) {
     if (!dragging) return;
     const wrapRect = wrap.getBoundingClientRect();
-    let x = e.clientX - wrapRect.left - offsetX;
-    let y = e.clientY - wrapRect.top - offsetY;
+    let x = clientX - wrapRect.left - offsetX;
+    let y = clientY - wrapRect.top - offsetY;
 
-    // Optional bounds (keep within wrap)
+    // keep inside PDF canvas
     x = Math.max(0, Math.min(x, wrap.clientWidth - sig.clientWidth));
     y = Math.max(0, Math.min(y, wrap.clientHeight - sig.clientHeight));
 
     sig.style.left = x + 'px';
     sig.style.top = y + 'px';
-  });
+  }
 
-  document.addEventListener('mouseup', () => dragging = false);
+  // Mouse events
+  sig.addEventListener('mousedown', (e) => {
+    startDrag(e.clientX, e.clientY);
+    e.preventDefault();
+  });
+  document.addEventListener('mousemove', (e) => doDrag(e.clientX, e.clientY));
+  document.addEventListener('mouseup', () => (dragging = false));
+
+  // Touch events
+  sig.addEventListener('touchstart', (e) => {
+    if (e.touches.length > 0) {
+      startDrag(e.touches[0].clientX, e.touches[0].clientY);
+    }
+    e.preventDefault();
+  });
+  document.addEventListener('touchmove', (e) => {
+    if (e.touches.length > 0) {
+      doDrag(e.touches[0].clientX, e.touches[0].clientY);
+    }
+  });
+  document.addEventListener('touchend', () => (dragging = false));
 })();
 
 // Resize with slider
