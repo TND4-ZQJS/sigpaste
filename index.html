@@ -377,10 +377,6 @@ document.getElementById('sizeSlider').addEventListener('input', (e) => {
   // Init
   go(1);
 
-  <!-- Add pdf-lib -->
-<script src="https://cdnjs.cloudflare.com/ajax/libs/pdf-lib/1.17.1/pdf-lib.min.js"></script>
-
-<script>
 let pdfDoc = null;
 let currentPage = 1;
 let totalPages = 0;
@@ -510,7 +506,7 @@ saveBtn.addEventListener('click', async () => {
   a.download = "signed.pdf";
   a.click();
 });
-</script>
+
 </script>
 </body>
 </html>
