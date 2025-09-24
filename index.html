@@ -1,512 +1,227 @@
-<!doctype html>
+<!DOCTYPE html>
 <html lang="en">
 <head>
-  <meta charset="utf-8" />
-  <title>Signature Extraction Wizard</title>
-  <meta name="viewport" content="width=device-width,initial-scale=1" />
-  <!-- Your style system -->
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>PDF Signature Wizard</title>
+  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/cropperjs/1.5.13/cropper.min.css" />
   <style>
-    :root{
-      --bg:#f6f7f9; --card:#fff; --accent:#007aff; --muted:#666; --line:#e9e9ee;
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+      background: #f5f5f7;
+      margin: 0;
+      padding: 0;
     }
-    *{box-sizing:border-box}
-    body{font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,Arial;margin:18px;background:var(--bg);color:#111}
-    main{max-width:980px;margin:0 auto;background:var(--card);padding:18px;border-radius:12px;box-shadow:0 8px 28px rgba(0,0,0,0.06)}
-    h1{margin:15px 0 35px 0;font-size:1.50rem}
-    .section{background:#fbfbfd;border:1px solid #eee;padding:14px;border-radius:10px;margin:12px 0}
-    .section h2{margin:0 0 10px 0;font-size:1.05rem}
-    label{display:block;margin:8px 0;font-size:0.95rem}
-    input[type=file]{margin-top:6px}
-    .row{display:flex;gap:12px;align-items:center;flex-wrap:wrap;margin:8px 0}
-    .muted{color:var(--muted);font-size:0.85rem}
-    button{background:var(--accent);color:#fff;border:0;padding:10px 14px;border-radius:10px;cursor:pointer}
-    button.secondary{background:#999}
-    button.ghost{background:transparent;border:1px solid var(--line);color:#333}
-    .actions{display:flex;gap:12px;align-items:center}
-    /* Minimal extras */
-    .hidden{display:none}
-    .preview{margin-top:10px;text-align:center}
-    img, canvas{max-width:100%;border:1px solid var(--line);border-radius:8px}
-    .step-indicator{display:flex;gap:8px;flex-wrap:wrap;margin:0 0 8px 0}
-    .pill{padding:6px 10px;border:1px solid var(--line);border-radius:999px;font-size:0.85rem}
-    .pill.active{border-color:var(--accent);color:#fff;background:var(--accent)}
+    .container { max-width: 900px; margin: auto; padding: 20px; }
+    .step { display: none; background: #fff; padding: 20px; border-radius: 12px;
+            box-shadow: 0 2px 8px rgba(0,0,0,0.1); margin-bottom: 20px; }
+    .step.active { display: block; }
+    .actions { text-align: center; margin-top: 20px; }
+    .actions button { padding: 10px 20px; border-radius: 8px; border: none;
+                      margin: 0 10px; font-weight: 600; cursor: pointer; }
+    .primary { background: #0071e3; color: #fff; }
+    .ghost { background: #e0e0e0; color: #333; }
+    #cropArea img { max-width: 100%; }
+    #pdfWrap { position: relative; display: inline-block; }
+    #pdfCanvas { border: 1px solid #ccc; display: block; }
+    #sigImg { position: absolute; top: 20px; left: 20px; cursor: move;
+              border: 2px dashed #0071e3; resize: both; overflow: auto; }
   </style>
-
-  <!-- Cropper.js -->
-  <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/cropperjs/1.5.13/cropper.min.css"/>
+  <!-- External libs -->
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/2.16.105/pdf.min.js"></script>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/pdf-lib/1.17.1/pdf-lib.min.js"></script>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/cropperjs/1.5.13/cropper.min.js"></script>
 </head>
 <body>
-<main>
-  <h1>Signature Extraction (Wizard)</h1>
+  <div class="container">
+    <!-- Step 1 -->
+    <div class="step active" id="step1">
+      <h2>Step 1: Upload PDF</h2>
+      <input type="file" id="pdfUpload" accept="application/pdf" />
+      <div class="actions">
+        <button class="primary" onclick="go(2)">Next</button>
+      </div>
+    </div>
 
-  <!-- Step indicator -->
-  <div class="step-indicator">
-    <span class="pill" id="pi1">1. Upload</span>
-    <span class="pill" id="pi2">2. Crop</span>
-    <span class="pill" id="pi3">3. Extract & Download</span>
-    <span class="pill" id="pi4">4. Paste</span>
-  </div>
+    <!-- Step 2 -->
+    <div class="step" id="step2">
+      <h2>Step 2: Upload & Crop Signature</h2>
+      <input type="file" id="sigUpload" accept="image/*" />
+      <div id="cropArea"></div>
+      <div class="actions">
+        <button class="ghost" onclick="go(1)">Back</button>
+        <button class="primary" onclick="cropSig()">Next</button>
+      </div>
+    </div>
 
-  <!-- Step 1 -->
-  <div class="section" id="step1">
-    <h2>1. Upload Image</h2>
-    <label>
-      Choose a photo/scan of your signature
-      <input type="file" id="fileInput" accept="image/*">
-    </label>
-    <p class="muted">Tip: A photo on white paper works best. You can rotate/zoom during cropping.</p>
-    <div class="actions">
-      <button class="ghost" id="s1Next" disabled>Next: Crop</button>
+    <!-- Step 3 -->
+    <div class="step" id="step3">
+      <h2>Step 3: Preview Signature</h2>
+      <img id="sigPreview" alt="Cropped Signature" style="max-width:200px; border:1px solid #ccc;" />
+      <div class="actions">
+        <button class="ghost" onclick="go(2)">Back</button>
+        <button class="primary" onclick="go(4)">Next</button>
+      </div>
+    </div>
+
+    <!-- Step 4 -->
+    <div class="step" id="step4">
+      <h2>Step 4: Place Signature on PDF</h2>
+      <div id="pdfWrap">
+        <canvas id="pdfCanvas"></canvas>
+        <img id="sigImg" style="display:none; width:120px;" />
+      </div>
+      <div class="actions">
+        <button class="ghost" onclick="go(3)">Back</button>
+        <button class="primary" id="s4Soon" disabled>Save PDF</button>
+      </div>
     </div>
   </div>
 
-  <!-- Step 2 -->
-  <div class="section hidden" id="step2">
-    <h2>2. Crop to Signature Area</h2>
-    <div class="preview">
-      <img id="cropImage" alt="Crop source" class="hidden">
-    </div>
-    <div class="actions">
-      <button class="ghost" id="s2Back">Back</button>
-      <button class="secondary" id="s2Reset">Reset Crop</button>
-      <button id="s2Next" disabled>Next: Extract</button>
-    </div>
-    <p class="muted">Pinch to zoom, drag to position. When ready, tap “Next: Extract”.</p>
-  </div>
+  <script>
+    /* ---------- Helpers ---------- */
+    function $(id){ return document.getElementById(id); }
+    function go(step){
+      document.querySelectorAll(".step").forEach(s => s.classList.remove("active"));
+      $("step"+step).classList.add("active");
+    }
 
-  <!-- Step 3 -->
-  <div class="section hidden" id="step3">
-    <h2>3. Extract Signature (Dark Strokes Only)</h2>
-    <div class="row">
-      <label style="flex:1">
-        Threshold
-        <input type="range" id="threshold" min="0" max="255" value="200">
-      </label>
-      <div class="muted">Higher = keep only darker strokes</div>
-    </div>
-    <div class="preview">
-      <canvas id="resultCanvas"></canvas>
-    </div>
-    <div class="actions" style="margin-top:12px">
-      <button class="ghost" id="s3Back">Back</button>
-      <button id="toStep4Btn" class="secondary" disabled>Next: Paste in PDF</button>
-      <button id="downloadBtn" disabled>Download Transparent PNG</button>
-    </div>
-    <p class="muted">The white/grey background is removed. Only the signature stays on transparency.</p>
-  </div>
-
-  <!-- Step 4 -->
-<section id="step4" class="section hidden">
-  <h2>4. Paste Signature on PDF</h2>
-
-  <!-- PDF Upload -->
-  <label>Upload PDF
-    <input type="file" id="pdfUpload" accept="application/pdf">
-  </label>
-
-  <!-- PDF + Signature overlay -->
-  <div id="pdfWrap" style="position:relative; border:1px solid #ddd; margin-top:12px; display:inline-block;">
-    <canvas id="pdfCanvas"></canvas>
-    <img id="sigImg" src=""
-         style="position:absolute; top:50px; left:50px; width:150px; cursor:move; display:none; user-select:none;">
-  </div>
-
-  <!-- Size slider -->
-  <div class="row" style="margin-top:10px;">
-    <label style="flex:1">
-      Resize Signature
-      <input type="range" id="sizeSlider" min="40" max="600" value="150">
-    </label>
-  </div>
-
-  <div class="actions" style="margin-top:12px">
-    <button class="ghost" id="s4Back">Back</button>
-    <button class="ghost" id="s4Soon" disabled>Save PDF (coming soon)</button>
-  </div>
-</section>
-
-</main>
-
-<script src="https://cdnjs.cloudflare.com/ajax/libs/pdf-lib/1.17.1/pdf-lib.min.js"></script>
-<script src="https://cdnjs.cloudflare.com/ajax/libs/cropperjs/1.5.13/cropper.min.js"></script>
-<script src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/2.16.105/pdf.min.js"></script>
-<script>
-  // Elements
-  const step1 = document.getElementById('step1');
-  const step2 = document.getElementById('step2');
-  const step3 = document.getElementById('step3');
-  const step4 = document.getElementById('step4');
-  const pills = [document.getElementById('pi1'), document.getElementById('pi2'), document.getElementById('pi3'), document.getElementById('pi4')];
-
-  const fileInput = document.getElementById('fileInput');
-  const s1Next = document.getElementById('s1Next');
-
-  const cropImage = document.getElementById('cropImage');
-  const s2Back = document.getElementById('s2Back');
-  const s2Reset = document.getElementById('s2Reset');
-  const s2Next = document.getElementById('s2Next');
-
-  const threshold = document.getElementById('threshold');
-  const resultCanvas = document.getElementById('resultCanvas');
-  const downloadBtn = document.getElementById('downloadBtn');
-  const rctx = resultCanvas.getContext('2d');
-
-  // State
-  let cropper = null;
-  let sourceImg = null;
-  let croppedCanvas = null;
-  let uploadedName = 'signature';
-
-  // Wizard nav
-  function go(step) {
-    [step1, step2, step3, step4].forEach((el, i) => {
-      el.classList.toggle('hidden', i !== (step-1));
-      pills[i].classList.toggle('active', i === (step-1));
+    /* ---------- Step 2: Crop Signature ---------- */
+    let cropper;
+    $("sigUpload").addEventListener("change", e=>{
+      const file = e.target.files[0];
+      if(file){
+        const reader = new FileReader();
+        reader.onload = ()=>{
+          $("cropArea").innerHTML = `<img id="cropImg" src="${reader.result}">`;
+          cropper = new Cropper($("cropImg"), { aspectRatio: NaN });
+        };
+        reader.readAsDataURL(file);
+      }
     });
-  }
-
-  // Step 1: upload
-  fileInput.addEventListener('change', (e) => {
-    const file = e.target.files?.[0];
-    if (!file) return;
-    uploadedName = (file.name || 'signature').replace(/\.[^.]+$/,'') || 'signature';
-
-    const reader = new FileReader();
-    reader.onload = ev => {
-      sourceImg = new Image();
-      sourceImg.onload = () => {
-        // Prepare crop image element
-        cropImage.src = sourceImg.src = ev.target.result;
-        cropImage.classList.remove('hidden');
-        s1Next.disabled = false;
-      };
-      sourceImg.src = ev.target.result;
-    };
-    reader.readAsDataURL(file);
-  });
-
-  s1Next.addEventListener('click', () => {
-    go(2);
-    // Init cropper
-    if (cropper) cropper.destroy();
-    cropper = new Cropper(cropImage, {
-      viewMode: 1,
-      dragMode: 'move',
-      autoCrop: true,
-      background: false,
-      movable: true,
-      zoomable: true,
-      scalable: false,
-      responsive: true,
-      minContainerWidth: 300,
-      minContainerHeight: 200,
-      ready() { s2Next.disabled = false; }
-    });
-  });
-
-  // Step 2 controls
-  s2Back.addEventListener('click', () => {
-    if (cropper) { cropper.destroy(); cropper = null; }
-    s2Next.disabled = true;
-    go(1);
-  });
-
-  s2Reset.addEventListener('click', () => {
-    if (cropper) cropper.reset();
-  });
-
-  s2Next.addEventListener('click', () => {
-    if (!cropper) return;
-    // Get cropped area as canvas (fill white to ensure consistent input for extraction)
-    croppedCanvas = cropper.getCroppedCanvas({ fillColor: '#ffffff' });
-    go(3);
-    renderExtraction(); // initial render
-    downloadBtn.disabled = false;
-    enableNextToStep4();
-  });
-
-  // Step 3: extraction
-  threshold.addEventListener('input', renderExtraction);
-
-  function renderExtraction() {
-    if (!croppedCanvas) return;
-    // Draw cropped onto result, then process pixels
-    resultCanvas.width = croppedCanvas.width;
-    resultCanvas.height = croppedCanvas.height;
-
-    // Draw the cropped image snapshot
-    rctx.drawImage(croppedCanvas, 0, 0);
-
-    const imgData = rctx.getImageData(0, 0, resultCanvas.width, resultCanvas.height);
-    const data = imgData.data;
-    const th = parseInt(threshold.value, 10);
-
-    for (let i = 0; i < data.length; i += 4) {
-      const r = data[i], g = data[i+1], b = data[i+2];
-      // Luma (perceived brightness): 0=black, 255=white
-      const brightness = 0.299*r + 0.587*g + 0.114*b;
-
-      if (brightness > th) {
-        // background → transparent
-        data[i+3] = 0;
-      } else {
-        // keep stroke, enforce solid black for clarity
-        data[i] = 0; data[i+1] = 0; data[i+2] = 0; data[i+3] = 255;
+    function cropSig(){
+      if(cropper){
+        const canvas = cropper.getCroppedCanvas();
+        $("sigPreview").src = canvas.toDataURL("image/png");
+        $("sigImg").src = canvas.toDataURL("image/png");
+        $("sigImg").style.display = "block";
+        go(3);
       }
     }
-    rctx.putImageData(imgData, 0, 0);
-  }
 
-  // Step 3 nav
-  document.getElementById('s3Back').addEventListener('click', () => {
-    go(2);
-  });
+    /* ---------- Step 4: PDF Multi-page & Export ---------- */
+    const pdfCanvas = $("pdfCanvas");
+    const pdfCtx = pdfCanvas.getContext("2d");
+    let pdfDoc = null, currentPage=1, totalPages=0;
+    const sigImg = $("sigImg"), wrap = $("pdfWrap");
+    const sigPositions = {};
 
-  // Enable "Next: Paste in PDF" when we have a result
-function enableNextToStep4() {
-  document.getElementById('toStep4Btn').disabled = false;
-}
+    // Add navigation UI
+    const nav = document.createElement("div");
+    nav.className = "actions";
+    nav.innerHTML = `
+      <button id="prevPage" class="ghost">Prev</button>
+      <span id="pageInfo" style="flex:1; text-align:center"></span>
+      <button id="nextPage" class="ghost">Next</button>
+    `;
+    $("step4").insertBefore(nav, wrap);
 
-// Step 3 → Step 4
-function goToStep4() {
-  // send the PNG to Step 4's overlay image
-  const sigImg = document.getElementById('sigImg');
-  sigImg.src = resultCanvas.toDataURL('image/png');
-  sigImg.style.display = 'block';
-  // set initial width from slider
-  sigImg.style.width = document.getElementById('sizeSlider').value + 'px';
-  go(4);
-}
+    async function renderPage(num){
+      const page = await pdfDoc.getPage(num);
+      const viewport = page.getViewport({ scale: 1.5 });
+      pdfCanvas.width = viewport.width;
+      pdfCanvas.height = viewport.height;
+      await page.render({ canvasContext: pdfCtx, viewport }).promise;
 
-document.getElementById('toStep4Btn').addEventListener('click', goToStep4);
-document.getElementById('s4Back').addEventListener('click', () => go(3));
-
-// ---- Step 4 logic ----
-
-// pdf.js worker (match your pdf.js version)
-if (window['pdfjsLib']) {
-  pdfjsLib.GlobalWorkerOptions.workerSrc =
-    "https://cdnjs.cloudflare.com/ajax/libs/pdf.js/2.16.105/pdf.worker.min.js";
-}
-
-// Render first page of uploaded PDF
-const pdfCanvas = document.getElementById('pdfCanvas');
-const pdfCtx = pdfCanvas.getContext('2d');
-
-document.getElementById('pdfUpload').addEventListener('change', async (e) => {
-  const file = e.target.files?.[0];
-  if (!file) return;
-
-  const buf = await file.arrayBuffer();
-  const pdf = await pdfjsLib.getDocument({ data: buf }).promise;
-  const page = await pdf.getPage(1);
-
-  // Scale to a comfortable preview size
-  const viewport = page.getViewport({ scale: 1.5 });
-  pdfCanvas.width = viewport.width;
-  pdfCanvas.height = viewport.height;
-
-  await page.render({ canvasContext: pdfCtx, viewport }).promise;
-});
-
-  // Drag signature overlay (mouse + touch)
-(function enableSigDrag() {
-  const sig = document.getElementById('sigImg');
-  const wrap = document.getElementById('pdfWrap');
-  let dragging = false, offsetX = 0, offsetY = 0;
-
-  function startDrag(clientX, clientY) {
-    dragging = true;
-    const rect = sig.getBoundingClientRect();
-    offsetX = clientX - rect.left;
-    offsetY = clientY - rect.top;
-  }
-
-  function doDrag(clientX, clientY) {
-    if (!dragging) return;
-    const wrapRect = wrap.getBoundingClientRect();
-    let x = clientX - wrapRect.left - offsetX;
-    let y = clientY - wrapRect.top - offsetY;
-
-    // keep inside PDF canvas
-    x = Math.max(0, Math.min(x, wrap.clientWidth - sig.clientWidth));
-    y = Math.max(0, Math.min(y, wrap.clientHeight - sig.clientHeight));
-
-    sig.style.left = x + 'px';
-    sig.style.top = y + 'px';
-  }
-
-  // Mouse events
-  sig.addEventListener('mousedown', (e) => {
-    startDrag(e.clientX, e.clientY);
-    e.preventDefault();
-  });
-  document.addEventListener('mousemove', (e) => doDrag(e.clientX, e.clientY));
-  document.addEventListener('mouseup', () => (dragging = false));
-
-  // Touch events
-  sig.addEventListener('touchstart', (e) => {
-    if (e.touches.length > 0) {
-      startDrag(e.touches[0].clientX, e.touches[0].clientY);
+      if(sigPositions[num]){
+        const pos = sigPositions[num];
+        sigImg.src = pos.dataUrl;
+        sigImg.style.width = pos.w+"px";
+        sigImg.style.left = pos.x+"px";
+        sigImg.style.top = pos.y+"px";
+        sigImg.style.display = "block";
+      } else {
+        sigImg.style.display = "none";
+      }
+      $("pageInfo").textContent = `Page ${num} / ${totalPages}`;
     }
-    e.preventDefault();
-  });
-  document.addEventListener('touchmove', (e) => {
-    if (e.touches.length > 0) {
-      doDrag(e.touches[0].clientX, e.touches[0].clientY);
+
+    // Load PDF
+    $("pdfUpload").addEventListener("change", async (e)=>{
+      const file = e.target.files?.[0]; if(!file) return;
+      const buf = await file.arrayBuffer();
+      pdfDoc = await pdfjsLib.getDocument({ data: buf }).promise;
+      totalPages = pdfDoc.numPages;
+      currentPage = 1;
+      renderPage(currentPage);
+    });
+
+    // Save current signature position
+    function saveSigPos(pageNum){
+      if(sigImg.style.display !== "none"){
+        sigPositions[pageNum] = {
+          x: parseInt(sigImg.style.left)||20,
+          y: parseInt(sigImg.style.top)||20,
+          w: sigImg.clientWidth,
+          h: sigImg.clientHeight,
+          dataUrl: sigImg.src
+        };
+      }
     }
-  });
-  document.addEventListener('touchend', () => (dragging = false));
-})();
 
-// Resize with slider
-document.getElementById('sizeSlider').addEventListener('input', (e) => {
-  document.getElementById('sigImg').style.width = e.target.value + 'px';
-});
+    // Navigation
+    document.addEventListener("click", e=>{
+      if(e.target.id==="prevPage" && currentPage>1){
+        saveSigPos(currentPage);
+        currentPage--;
+        renderPage(currentPage);
+      }
+      if(e.target.id==="nextPage" && currentPage<totalPages){
+        saveSigPos(currentPage);
+        currentPage++;
+        renderPage(currentPage);
+      }
+    });
 
-  
-  
-  // Download
-  downloadBtn.addEventListener('click', () => {
-    const a = document.createElement('a');
-    a.download = `${uploadedName}-signature.png`;
-    a.href = resultCanvas.toDataURL('image/png');
-    a.click();
-  });
+    // Enable Save PDF
+    const saveBtn = $("s4Soon");
+    saveBtn.disabled = false;
+    saveBtn.addEventListener("click", async ()=>{
+      if(!$("pdfUpload").files[0]) return alert("Upload a PDF first!");
+      saveSigPos(currentPage);
 
-  // Init
-  go(1);
+      const buf = await $("pdfUpload").files[0].arrayBuffer();
+      const outPdf = await PDFLib.PDFDocument.load(buf);
 
-let pdfDoc = null;
-let currentPage = 1;
-let totalPages = 0;
+      for(let p=1; p<=totalPages; p++){
+        if(sigPositions[p]){
+          const pos = sigPositions[p];
+          const pngBytes = await fetch(pos.dataUrl).then(r=>r.arrayBuffer());
+          const pngImage = await outPdf.embedPng(pngBytes);
+          const page = outPdf.getPage(p-1);
 
-// Elements
-const pdfUpload = document.getElementById('pdfUpload');
-const pdfCanvas = document.getElementById('pdfCanvas');
-const pdfCtx = pdfCanvas.getContext('2d');
-const sigImg = document.getElementById('sigImg');
-const wrap = document.getElementById('pdfWrap');
+          const pdfW = page.getWidth(), pdfH = page.getHeight();
+          const canvasW = pdfCanvas.width, canvasH = pdfCanvas.height;
 
-// Page navigation UI (insert somewhere in Step 4 HTML if you like)
-const nav = document.createElement('div');
-nav.className = "actions";
-nav.innerHTML = `
-  <button id="prevPage" class="ghost">Prev</button>
-  <span id="pageInfo" style="flex:1; text-align:center"></span>
-  <button id="nextPage" class="ghost">Next</button>
-`;
-document.getElementById('step4').insertBefore(nav, wrap);
+          const scaleX = pdfW/canvasW, scaleY = pdfH/canvasH;
+          const x = pos.x*scaleX;
+          const y = (canvasH - pos.y - pos.h)*scaleY;
+          const w = pos.w*scaleX, h = pos.h*scaleY;
 
-// Store signature placements per page
-const sigPositions = {}; // pageNumber → { x, y, w, h, dataUrl }
+          page.drawImage(pngImage, { x, y, width:w, height:h });
+        }
+      }
 
-async function renderPage(num) {
-  const page = await pdfDoc.getPage(num);
-  const viewport = page.getViewport({ scale: 1.5 });
-  pdfCanvas.width = viewport.width;
-  pdfCanvas.height = viewport.height;
-  await page.render({ canvasContext: pdfCtx, viewport }).promise;
+      const pdfBytes = await outPdf.save();
+      const blob = new Blob([pdfBytes], { type:"application/pdf" });
+      const a = document.createElement("a");
+      a.href = URL.createObjectURL(blob);
+      a.download = "signed.pdf";
+      a.click();
+    });
 
-  // Restore sig for this page
-  if (sigPositions[num]) {
-    const pos = sigPositions[num];
-    sigImg.src = pos.dataUrl;
-    sigImg.style.width = pos.w + "px";
-    sigImg.style.left = pos.x + "px";
-    sigImg.style.top = pos.y + "px";
-    sigImg.style.display = "block";
-  } else {
-    sigImg.style.display = "none";
-  }
-
-  document.getElementById('pageInfo').textContent = `Page ${num} / ${totalPages}`;
-}
-
-// Upload PDF
-pdfUpload.addEventListener('change', async (e) => {
-  const file = e.target.files?.[0];
-  if (!file) return;
-  const buf = await file.arrayBuffer();
-  pdfDoc = await pdfjsLib.getDocument({ data: buf }).promise;
-  totalPages = pdfDoc.numPages;
-  currentPage = 1;
-  renderPage(currentPage);
-});
-
-// Navigation
-document.getElementById('prevPage').addEventListener('click', () => {
-  if (currentPage > 1) {
-    saveSigPos(currentPage);
-    currentPage--;
-    renderPage(currentPage);
-  }
-});
-document.getElementById('nextPage').addEventListener('click', () => {
-  if (currentPage < totalPages) {
-    saveSigPos(currentPage);
-    currentPage++;
-    renderPage(currentPage);
-  }
-});
-
-// Save current sig position before page change
-function saveSigPos(pageNum) {
-  if (sigImg.style.display !== "none") {
-    sigPositions[pageNum] = {
-      x: parseInt(sigImg.style.left),
-      y: parseInt(sigImg.style.top),
-      w: sigImg.clientWidth,
-      h: sigImg.clientHeight,
-      dataUrl: sigImg.src
-    };
-  }
-}
-
-// ----- Export signed PDF -----
-const saveBtn = document.getElementById('s4Soon');
-saveBtn.disabled = false;
-
-saveBtn.addEventListener('click', async () => {
-  if (!pdfUpload.files[0]) return alert("Upload a PDF first!");
-  saveSigPos(currentPage);
-
-  const buf = await pdfUpload.files[0].arrayBuffer();
-  const outPdf = await PDFLib.PDFDocument.load(buf);
-
-  for (let p = 1; p <= totalPages; p++) {
-    if (sigPositions[p]) {
-      const pos = sigPositions[p];
-      const pngBytes = await fetch(pos.dataUrl).then(r => r.arrayBuffer());
-      const pngImage = await outPdf.embedPng(pngBytes);
-      const page = outPdf.getPage(p - 1);
-
-      // Convert HTML coords → PDF coords
-      const pdfW = page.getWidth();
-      const pdfH = page.getHeight();
-      const canvasW = pdfCanvas.width;
-      const canvasH = pdfCanvas.height;
-
-      const scaleX = pdfW / canvasW;
-      const scaleY = pdfH / canvasH;
-
-      const x = pos.x * scaleX;
-      const y = (canvasH - pos.y - pos.h) * scaleY; // flip Y
-      const w = pos.w * scaleX;
-      const h = pos.h * scaleY;
-
-      page.drawImage(pngImage, { x, y, width: w, height: h });
-    }
-  }
-
-  const pdfBytes = await outPdf.save();
-  const blob = new Blob([pdfBytes], { type: "application/pdf" });
-  const a = document.createElement("a");
-  a.href = URL.createObjectURL(blob);
-  a.download = "signed.pdf";
-  a.click();
-});
-
-</script>
+    // Init wizard
+    go(1);
+  </script>
 </body>
 </html>
