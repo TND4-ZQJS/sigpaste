@@ -127,6 +127,7 @@
 
 </main>
 
+<script src="https://cdnjs.cloudflare.com/ajax/libs/pdf-lib/1.17.1/pdf-lib.min.js"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/cropperjs/1.5.13/cropper.min.js"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/2.16.105/pdf.min.js"></script>
 <script>
@@ -375,6 +376,141 @@ document.getElementById('sizeSlider').addEventListener('input', (e) => {
 
   // Init
   go(1);
+
+  <!-- Add pdf-lib -->
+<script src="https://cdnjs.cloudflare.com/ajax/libs/pdf-lib/1.17.1/pdf-lib.min.js"></script>
+
+<script>
+let pdfDoc = null;
+let currentPage = 1;
+let totalPages = 0;
+
+// Elements
+const pdfUpload = document.getElementById('pdfUpload');
+const pdfCanvas = document.getElementById('pdfCanvas');
+const pdfCtx = pdfCanvas.getContext('2d');
+const sigImg = document.getElementById('sigImg');
+const wrap = document.getElementById('pdfWrap');
+
+// Page navigation UI (insert somewhere in Step 4 HTML if you like)
+const nav = document.createElement('div');
+nav.className = "actions";
+nav.innerHTML = `
+  <button id="prevPage" class="ghost">Prev</button>
+  <span id="pageInfo" style="flex:1; text-align:center"></span>
+  <button id="nextPage" class="ghost">Next</button>
+`;
+document.getElementById('step4').insertBefore(nav, wrap);
+
+// Store signature placements per page
+const sigPositions = {}; // pageNumber → { x, y, w, h, dataUrl }
+
+async function renderPage(num) {
+  const page = await pdfDoc.getPage(num);
+  const viewport = page.getViewport({ scale: 1.5 });
+  pdfCanvas.width = viewport.width;
+  pdfCanvas.height = viewport.height;
+  await page.render({ canvasContext: pdfCtx, viewport }).promise;
+
+  // Restore sig for this page
+  if (sigPositions[num]) {
+    const pos = sigPositions[num];
+    sigImg.src = pos.dataUrl;
+    sigImg.style.width = pos.w + "px";
+    sigImg.style.left = pos.x + "px";
+    sigImg.style.top = pos.y + "px";
+    sigImg.style.display = "block";
+  } else {
+    sigImg.style.display = "none";
+  }
+
+  document.getElementById('pageInfo').textContent = `Page ${num} / ${totalPages}`;
+}
+
+// Upload PDF
+pdfUpload.addEventListener('change', async (e) => {
+  const file = e.target.files?.[0];
+  if (!file) return;
+  const buf = await file.arrayBuffer();
+  pdfDoc = await pdfjsLib.getDocument({ data: buf }).promise;
+  totalPages = pdfDoc.numPages;
+  currentPage = 1;
+  renderPage(currentPage);
+});
+
+// Navigation
+document.getElementById('prevPage').addEventListener('click', () => {
+  if (currentPage > 1) {
+    saveSigPos(currentPage);
+    currentPage--;
+    renderPage(currentPage);
+  }
+});
+document.getElementById('nextPage').addEventListener('click', () => {
+  if (currentPage < totalPages) {
+    saveSigPos(currentPage);
+    currentPage++;
+    renderPage(currentPage);
+  }
+});
+
+// Save current sig position before page change
+function saveSigPos(pageNum) {
+  if (sigImg.style.display !== "none") {
+    sigPositions[pageNum] = {
+      x: parseInt(sigImg.style.left),
+      y: parseInt(sigImg.style.top),
+      w: sigImg.clientWidth,
+      h: sigImg.clientHeight,
+      dataUrl: sigImg.src
+    };
+  }
+}
+
+// ----- Export signed PDF -----
+const saveBtn = document.getElementById('s4Soon');
+saveBtn.disabled = false;
+
+saveBtn.addEventListener('click', async () => {
+  if (!pdfUpload.files[0]) return alert("Upload a PDF first!");
+  saveSigPos(currentPage);
+
+  const buf = await pdfUpload.files[0].arrayBuffer();
+  const outPdf = await PDFLib.PDFDocument.load(buf);
+
+  for (let p = 1; p <= totalPages; p++) {
+    if (sigPositions[p]) {
+      const pos = sigPositions[p];
+      const pngBytes = await fetch(pos.dataUrl).then(r => r.arrayBuffer());
+      const pngImage = await outPdf.embedPng(pngBytes);
+      const page = outPdf.getPage(p - 1);
+
+      // Convert HTML coords → PDF coords
+      const pdfW = page.getWidth();
+      const pdfH = page.getHeight();
+      const canvasW = pdfCanvas.width;
+      const canvasH = pdfCanvas.height;
+
+      const scaleX = pdfW / canvasW;
+      const scaleY = pdfH / canvasH;
+
+      const x = pos.x * scaleX;
+      const y = (canvasH - pos.y - pos.h) * scaleY; // flip Y
+      const w = pos.w * scaleX;
+      const h = pos.h * scaleY;
+
+      page.drawImage(pngImage, { x, y, width: w, height: h });
+    }
+  }
+
+  const pdfBytes = await outPdf.save();
+  const blob = new Blob([pdfBytes], { type: "application/pdf" });
+  const a = document.createElement("a");
+  a.href = URL.createObjectURL(blob);
+  a.download = "signed.pdf";
+  a.click();
+});
+</script>
 </script>
 </body>
 </html>
