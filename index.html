@@ -127,6 +127,12 @@
   </div>
 
   <div class="actions" style="margin-top:12px">
+  <button class="ghost" id="s4Back">Back</button>
+  <button id="pasteSigBtn">Paste Signature Here</button>
+  <button class="ghost" id="s4Soon" disabled>Save PDF (coming soon)</button>
+</div>
+
+  <div class="actions" style="margin-top:12px">
     <button class="ghost" id="s4Back">Back</button>
     <button id="savePdfBtn" disabled>Save Signed PDF</button>
   </div>
@@ -326,35 +332,27 @@ async function renderPage(pageNum) {
   const page = await pdfjsDoc.getPage(pageNum);
   const viewport = page.getViewport({ scale: 1.5 });
 
-  // set canvas size (internal size)
   pdfCanvas.width = Math.round(viewport.width);
   pdfCanvas.height = Math.round(viewport.height);
-  // keep CSS size consistent (helps layout)
-  pdfCanvas.style.width = pdfCanvas.width + 'px';
-  pdfCanvas.style.height = pdfCanvas.height + 'px';
+  pdfCanvas.style.width = pdfCanvas.width + "px";
+  pdfCanvas.style.height = pdfCanvas.height + "px";
 
   await page.render({ canvasContext: pdfCtx, viewport }).promise;
 
-  // restore signature placement on this page (if any)
   const saved = sigPlacements[pageNum];
   if (sigImg.src) {
     if (saved) {
-      // account for possible canvas size differences by scaling
       const ratioX = pdfCanvas.width / saved.canvasWidth || 1;
       const ratioY = pdfCanvas.height / saved.canvasHeight || 1;
-      sigImg.style.left = (saved.x * ratioX) + 'px';
-      sigImg.style.top = (saved.y * ratioY) + 'px';
-      sigImg.style.width = (saved.width * ratioX) + 'px';
-      sigImg.style.display = 'block';
+      sigImg.style.left = (saved.x * ratioX) + "px";
+      sigImg.style.top = (saved.y * ratioY) + "px";
+      sigImg.style.width = (saved.width * ratioX) + "px";
+      sigImg.style.display = "block";
     } else {
-      // no saved placement for this page — show signature ready to place
-      sigImg.style.left = '50px';
-      sigImg.style.top = '50px';
-      sigImg.style.width = sizeSlider.value + 'px';
-      sigImg.style.display = 'block';
+      sigImg.style.display = "none"; // ✅ hidden until user clicks "Paste"
     }
   } else {
-    sigImg.style.display = 'none';
+    sigImg.style.display = "none";   // no signature extracted yet
   }
 
   pageInfo.textContent = `Page ${pageNum} / ${totalPages}`;
@@ -418,7 +416,7 @@ function saveSigPlacement() {
 
   function doDrag(clientX, clientY) {
     if (!dragging) return;
-    const wrapRect = wrap.getBoundingClientRect();
+    const wrapRect = wrap.getBoundingClientRect()
     // compute relative position inside wrap
     let x = clientX - wrapRect.left - offsetX;
     let y = clientY - wrapRect.top - offsetY;
@@ -453,6 +451,15 @@ function saveSigPlacement() {
 // Resize signature from slider (live)
 sizeSlider.addEventListener('input', (e) => {
   sigImg.style.width = e.target.value + 'px';
+});
+
+// Paste Signature button
+document.getElementById("pasteSigBtn").addEventListener("click", () => {
+  sigImg.style.left = "50px";
+  sigImg.style.top = "50px";
+  sigImg.style.width = sizeSlider.value + "px";
+  sigImg.style.display = "block";
+  saveSigPlacement(); // immediately save placement for this page
 });
 
 // When user clicks Back in Step4
