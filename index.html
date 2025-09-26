@@ -108,7 +108,14 @@
   <div id="pdfWrap" style="position:relative; border:1px solid #ddd; margin-top:12px; display:inline-block;">
     <canvas id="pdfCanvas"></canvas>
     <img id="sigImg" src=""
-         style="position:absolute; top:50px; left:50px; width:150px; cursor:move; display:none; user-select:none;">
+         style="position:absolute; top:50px; left:50px; width:150px; cursor:move; display:none; user-select:none; touch-action:none;">
+  </div>
+
+  <!-- Page navigation -->
+  <div class="row" style="margin-top:10px;">
+    <button id="prevPageBtn" class="ghost">◀ Prev</button>
+    <span id="pageInfo">Page 1 / 1</span>
+    <button id="nextPageBtn" class="ghost">Next ▶</button>
   </div>
 
   <!-- Size slider -->
@@ -121,12 +128,13 @@
 
   <div class="actions" style="margin-top:12px">
     <button class="ghost" id="s4Back">Back</button>
-    <button class="ghost" id="s4Soon" disabled>Save PDF (coming soon)</button>
+    <button id="savePdfBtn" disabled>Save Signed PDF</button>
   </div>
 </section>
 
 </main>
 
+<script src="https://cdnjs.cloudflare.com/ajax/libs/pdf-lib/1.17.1/pdf-lib.min.js"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/cropperjs/1.5.13/cropper.min.js"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/2.16.105/pdf.min.js"></script>
 <script>
@@ -282,41 +290,128 @@ document.getElementById('s4Back').addEventListener('click', () => go(3));
 
 // ---- Step 4 logic ----
 
-// pdf.js worker (match your pdf.js version)
+// ---- Step 4 logic (multi-page + export) ----
+
+// ensure pdf.js worker is set (keep same as your pdf.js version)
 if (window['pdfjsLib']) {
   pdfjsLib.GlobalWorkerOptions.workerSrc =
     "https://cdnjs.cloudflare.com/ajax/libs/pdf.js/2.16.105/pdf.worker.min.js";
 }
 
-// Render first page of uploaded PDF
+// Elements
+const pdfUpload = document.getElementById('pdfUpload');
 const pdfCanvas = document.getElementById('pdfCanvas');
 const pdfCtx = pdfCanvas.getContext('2d');
+const wrap = document.getElementById('pdfWrap');
+const sigImg = document.getElementById('sigImg');
+const sizeSlider = document.getElementById('sizeSlider');
+const pageInfo = document.getElementById('pageInfo');
+const prevPageBtn = document.getElementById('prevPageBtn');
+const nextPageBtn = document.getElementById('nextPageBtn');
+const savePdfBtn = document.getElementById('savePdfBtn');
+const s4BackBtn = document.getElementById('s4Back');
 
-document.getElementById('pdfUpload').addEventListener('change', async (e) => {
+// State
+let uploadedPdfBytes = null;   // raw pdf bytes for pdf-lib later
+let pdfjsDoc = null;          // pdf.js document for rendering
+let currentPageNum = 1;
+let totalPages = 1;
+
+// remember one signature placement per page
+// structure: { [pageNumber]: { x, y, width, height, canvasWidth, canvasHeight } }
+let sigPlacements = {};
+
+// Render a page (pdf.js)
+async function renderPage(pageNum) {
+  const page = await pdfjsDoc.getPage(pageNum);
+  const viewport = page.getViewport({ scale: 1.5 });
+
+  // set canvas size (internal size)
+  pdfCanvas.width = Math.round(viewport.width);
+  pdfCanvas.height = Math.round(viewport.height);
+  // keep CSS size consistent (helps layout)
+  pdfCanvas.style.width = pdfCanvas.width + 'px';
+  pdfCanvas.style.height = pdfCanvas.height + 'px';
+
+  await page.render({ canvasContext: pdfCtx, viewport }).promise;
+
+  // restore signature placement on this page (if any)
+  const saved = sigPlacements[pageNum];
+  if (sigImg.src) {
+    if (saved) {
+      // account for possible canvas size differences by scaling
+      const ratioX = pdfCanvas.width / saved.canvasWidth || 1;
+      const ratioY = pdfCanvas.height / saved.canvasHeight || 1;
+      sigImg.style.left = (saved.x * ratioX) + 'px';
+      sigImg.style.top = (saved.y * ratioY) + 'px';
+      sigImg.style.width = (saved.width * ratioX) + 'px';
+      sigImg.style.display = 'block';
+    } else {
+      // no saved placement for this page — show signature ready to place
+      sigImg.style.left = '50px';
+      sigImg.style.top = '50px';
+      sigImg.style.width = sizeSlider.value + 'px';
+      sigImg.style.display = 'block';
+    }
+  } else {
+    sigImg.style.display = 'none';
+  }
+
+  pageInfo.textContent = `Page ${pageNum} / ${totalPages}`;
+  currentPageNum = pageNum;
+}
+
+// Load uploaded PDF (pdf.js)
+pdfUpload.addEventListener('change', async (e) => {
   const file = e.target.files?.[0];
   if (!file) return;
 
-  const buf = await file.arrayBuffer();
-  const pdf = await pdfjsLib.getDocument({ data: buf }).promise;
-  const page = await pdf.getPage(1);
+  uploadedPdfBytes = await file.arrayBuffer();
+  pdfjsDoc = await pdfjsLib.getDocument({ data: uploadedPdfBytes }).promise;
 
-  // Scale to a comfortable preview size
-  const viewport = page.getViewport({ scale: 1.5 });
-  pdfCanvas.width = viewport.width;
-  pdfCanvas.height = viewport.height;
+  totalPages = pdfjsDoc.numPages;
+  currentPageNum = 1;
+  await renderPage(currentPageNum);
 
-  await page.render({ canvasContext: pdfCtx, viewport }).promise;
+  // enable save button (PDF is ready). User can still place signature on pages first.
+  savePdfBtn.disabled = false;
 });
 
-  // Drag signature overlay (mouse + touch)
+// Page navigation (save current placement before switching)
+prevPageBtn.addEventListener('click', async () => {
+  if (currentPageNum <= 1) return;
+  saveSigPlacement();
+  await renderPage(currentPageNum - 1);
+});
+nextPageBtn.addEventListener('click', async () => {
+  if (currentPageNum >= totalPages) return;
+  saveSigPlacement();
+  await renderPage(currentPageNum + 1);
+});
+
+// Save current signature placement (relative to the canvas/wrap)
+function saveSigPlacement() {
+  if (!sigImg.src || sigImg.style.display === 'none') return;
+  const left = parseFloat(sigImg.style.left) || 0;
+  const top = parseFloat(sigImg.style.top) || 0;
+  sigPlacements[currentPageNum] = {
+    x: left,
+    y: top,
+    width: sigImg.clientWidth,
+    height: sigImg.clientHeight,
+    canvasWidth: pdfCanvas.width,
+    canvasHeight: pdfCanvas.height
+  };
+}
+
+// Dragging (mouse + touch) for the signature overlay
 (function enableSigDrag() {
-  const sig = document.getElementById('sigImg');
-  const wrap = document.getElementById('pdfWrap');
-  let dragging = false, offsetX = 0, offsetY = 0;
+  let dragging = false;
+  let offsetX = 0, offsetY = 0;
 
   function startDrag(clientX, clientY) {
     dragging = true;
-    const rect = sig.getBoundingClientRect();
+    const rect = sigImg.getBoundingClientRect();
     offsetX = clientX - rect.left;
     offsetY = clientY - rect.top;
   }
@@ -324,57 +419,112 @@ document.getElementById('pdfUpload').addEventListener('change', async (e) => {
   function doDrag(clientX, clientY) {
     if (!dragging) return;
     const wrapRect = wrap.getBoundingClientRect();
+    // compute relative position inside wrap
     let x = clientX - wrapRect.left - offsetX;
     let y = clientY - wrapRect.top - offsetY;
 
-    // keep inside PDF canvas
-    x = Math.max(0, Math.min(x, wrap.clientWidth - sig.clientWidth));
-    y = Math.max(0, Math.min(y, wrap.clientHeight - sig.clientHeight));
+    // clamp inside wrap
+    x = Math.max(0, Math.min(x, wrap.clientWidth - sigImg.clientWidth));
+    y = Math.max(0, Math.min(y, wrap.clientHeight - sigImg.clientHeight));
 
-    sig.style.left = x + 'px';
-    sig.style.top = y + 'px';
+    sigImg.style.left = x + 'px';
+    sigImg.style.top = y + 'px';
   }
 
-  // Mouse events
-  sig.addEventListener('mousedown', (e) => {
+  // mouse
+  sigImg.addEventListener('mousedown', (e) => {
     startDrag(e.clientX, e.clientY);
     e.preventDefault();
   });
   document.addEventListener('mousemove', (e) => doDrag(e.clientX, e.clientY));
-  document.addEventListener('mouseup', () => (dragging = false));
+  document.addEventListener('mouseup', () => { dragging = false; });
 
-  // Touch events
-  sig.addEventListener('touchstart', (e) => {
-    if (e.touches.length > 0) {
-      startDrag(e.touches[0].clientX, e.touches[0].clientY);
-    }
+  // touch
+  sigImg.addEventListener('touchstart', (e) => {
+    if (e.touches.length > 0) startDrag(e.touches[0].clientX, e.touches[0].clientY);
     e.preventDefault();
-  });
+  }, { passive: false });
   document.addEventListener('touchmove', (e) => {
-    if (e.touches.length > 0) {
-      doDrag(e.touches[0].clientX, e.touches[0].clientY);
-    }
-  });
-  document.addEventListener('touchend', () => (dragging = false));
+    if (e.touches.length > 0) doDrag(e.touches[0].clientX, e.touches[0].clientY);
+  }, { passive: false });
+  document.addEventListener('touchend', () => { dragging = false; });
 })();
 
-// Resize with slider
-document.getElementById('sizeSlider').addEventListener('input', (e) => {
-  document.getElementById('sigImg').style.width = e.target.value + 'px';
+// Resize signature from slider (live)
+sizeSlider.addEventListener('input', (e) => {
+  sigImg.style.width = e.target.value + 'px';
 });
 
-  
-  
-  // Download
-  downloadBtn.addEventListener('click', () => {
-    const a = document.createElement('a');
-    a.download = `${uploadedName}-signature.png`;
-    a.href = resultCanvas.toDataURL('image/png');
-    a.click();
-  });
+// When user clicks Back in Step4
+s4BackBtn.addEventListener('click', () => {
+  // save any placement on this page before going back
+  saveSigPlacement();
+  go(3);
+});
 
-  // Init
-  go(1);
+// Export signed PDF using pdf-lib (embeds signature PNG into each page that has placement)
+savePdfBtn.addEventListener('click', async () => {
+  if (!uploadedPdfBytes) {
+    alert("Please upload a PDF first.");
+    return;
+  }
+
+  // save current page placement
+  saveSigPlacement();
+
+  // load with pdf-lib to modify (writing)
+  savePdfBtn.disabled = true;
+  try {
+    const pdfDocLib = await PDFLib.PDFDocument.load(uploadedPdfBytes);
+
+    // If there are no placements, we still export the original document unchanged
+    const placementPages = Object.keys(sigPlacements);
+    if (placementPages.length > 0) {
+      // Embed signature image once (if present)
+      if (!sigImg.src) {
+        alert('No signature image found. Please extract signature and go to Step 4.');
+        savePdfBtn.disabled = false;
+        return;
+      }
+      const pngBytes = await fetch(sigImg.src).then(r => r.arrayBuffer());
+      const pngImage = await pdfDocLib.embedPng(pngBytes);
+
+      // For each page that has placement, draw the image
+      for (const pageKey of placementPages) {
+        const placement = sigPlacements[pageKey];
+        const pageIndex = parseInt(pageKey, 10) - 1;
+        const pages = pdfDocLib.getPages();
+        if (pageIndex < 0 || pageIndex >= pages.length) continue;
+        const page = pages[pageIndex];
+        const { width: pageWidth, height: pageHeight } = page.getSize();
+
+        // convert placement (which was recorded relative to the canvas used when placing)
+        const scale = pageWidth / placement.canvasWidth;
+        const x = placement.x * scale;
+        const y = (placement.canvasHeight - placement.y - placement.height) * scale; // flip y
+        const w = placement.width * scale;
+        const h = placement.height * scale;
+
+        page.drawImage(pngImage, {
+          x, y, width: w, height: h
+        });
+      }
+    }
+
+    // save and download
+    const pdfBytes = await pdfDocLib.save();
+    const blob = new Blob([pdfBytes], { type: 'application/pdf' });
+    const link = document.createElement('a');
+    link.href = URL.createObjectURL(blob);
+    link.download = `${uploadedName}-signed.pdf`;
+    link.click();
+  } catch (err) {
+    console.error(err);
+    alert('Failed to save signed PDF: ' + (err.message || err));
+  } finally {
+    savePdfBtn.disabled = false;
+  }
+});
 </script>
 </body>
 </html>
